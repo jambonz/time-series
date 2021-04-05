@@ -6,7 +6,8 @@ const {
   writeCdrs,
   queryCdrs,
   writeAlerts,
-  queryAlerts
+  queryAlerts,
+  AlertType
 } = require('..')(consoleLogger, '127.0.0.1');
 
 test('write cdr data', async(t) => {
@@ -50,18 +51,17 @@ test('write cdr data', async(t) => {
   t.ok(result.results[0].series[0].values.length  === 1, 'queried cdrs by tags')
 
   result = await writeAlerts([{
-    alert_type: 'webhook_failure',
+    alert_type: AlertType.WEBHOOK_FAILURE,
     account_sid: 'yyyy',
     reason: 'your webhook returned 404'
   }]);
-  //console.log(result);
   t.pass('wrote alert');
 
   result = await queryAlerts({limit: 10});
-  //console.log(result);
+  //console.log(JSON.stringify(result));
   t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts')
 
-  result = await queryAlerts({alert_type: 'webhook_failure', limit: 10});
+  result = await queryAlerts({alert_type: AlertType.WEBHOOK_FAILURE, limit: 10});
   t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts')
 
 });

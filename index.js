@@ -1,3 +1,4 @@
+const debug = require('debug')('jambonz:time-series');
 const assert = require('assert');
 const Influx = require('influx');
 const schemas = {
@@ -88,6 +89,7 @@ const writeCdrs = async(client, cdrs) => {
         }
       };
     });
+  debug(`writing cdrs: ${JSON.stringify(cdrs)}`);
   return await client.writePoints(cdrs);
 };
 
@@ -111,6 +113,7 @@ const writeAlerts = async(client, alerts) => {
         }
       };
     });
+  debug(`writing alerts: ${JSON.stringify(alerts)}`);
   return await client.writePoints(alerts);
 };
 
@@ -133,6 +136,15 @@ module.exports = (logger, opts) => {
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrs: queryCdrs.bind(null, cdrClient),
     writeAlerts: writeAlerts.bind(null, alertClient),
-    queryAlerts: queryAlerts.bind(null, alertClient)
+    queryAlerts: queryAlerts.bind(null, alertClient),
+    AlertType: {
+      WEBHOOK_FAILURE: 'webhook-failure',
+      TTS_NOT_PROVISIONED: 'no-tts',
+      STT_NOT_PROVISIONED: 'no-stt',
+      CARRIER_NOT_PROVISIONED: 'no-carrier',
+      CALL_LIMIT: 'call-limit',
+      DEVICE_LIMIT: 'device-limit',
+      API_LIMIT: 'api-limit'
+    }
   };
 };
