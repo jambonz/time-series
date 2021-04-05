@@ -22,7 +22,8 @@ test('write cdr data', async(t) => {
     terminated_at: new Date().getTime(),
     termination_reason: 'caller hungup',
     direction: 'inbound',
-    sbc: '10.10.100.1',
+    host: '10.10.100.1',
+    remote_host: '10.10.100.8',
     trunk: 'device',
     account_sid: 'xxxx'
   },
@@ -37,7 +38,8 @@ test('write cdr data', async(t) => {
     terminated_at: new Date().getTime(),
     termination_reason: 'caller hungup',
     direction: 'inbound',
-    sbc: '10.10.100.1',
+    host: '10.10.100.1',
+    remote_host: '10.10.100.8',
     trunk: 'twilio',
     account_sid: 'yyyy'
   }]);
@@ -53,7 +55,7 @@ test('write cdr data', async(t) => {
   result = await writeAlerts([{
     alert_type: AlertType.WEBHOOK_FAILURE,
     account_sid: 'yyyy',
-    reason: 'your webhook returned 404'
+    message: 'your webhook returned 404'
   }]);
   t.pass('wrote alert');
 
@@ -62,6 +64,6 @@ test('write cdr data', async(t) => {
   t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts')
 
   result = await queryAlerts({alert_type: AlertType.WEBHOOK_FAILURE, limit: 10});
-  t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts')
+  t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts by tags')
 
 });

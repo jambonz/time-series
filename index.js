@@ -15,11 +15,12 @@ const schemas = {
       attempted_at: Influx.FieldType.INTEGER,
       answered_at: Influx.FieldType.INTEGER,
       terminated_at: Influx.FieldType.INTEGER,
-      termination_reason: Influx.FieldType.STRING
+      termination_reason: Influx.FieldType.STRING,
+      remote_host: Influx.FieldType.STRING
     },
     tags: [
       'account_sid',
-      'sbc',
+      'host',
       'trunk',
       'direction'
     ]
@@ -27,7 +28,9 @@ const schemas = {
   alerts: {
     measurement: 'alerts',
     fields: {
-      reason: Influx.FieldType.STRING,
+      url: Influx.FieldType.STRING,
+      vendor: Influx.FieldType.STRING,
+      message: Influx.FieldType.STRING
     },
     tags: [
       'account_sid',
@@ -61,7 +64,7 @@ const createAlertQuery = ({account_sid, alert_type, limit}) => {
   }
   sql += ' order by time desc ';
   if (limit) sql += ` limit ${limit}`;
-  //console.log(sql);
+  debug(`createAlertQuery: ${sql}`);
   return sql;
 };
 
@@ -77,13 +80,13 @@ const writeCdrs = async(client, cdrs) => {
   if (!client._initialized) await initDatabase(client, 'cdrs');
   cdrs = (Array.isArray(cdrs) ? cdrs : [cdrs])
     .map((cdr) => {
-      const {direction, sbc, trunk, account_sid, ...fields} = cdr;
+      const {direction, host, trunk, account_sid, ...fields} = cdr;
       return {
         measurement: 'cdrs',
         fields,
         tags: {
           direction,
-          sbc,
+          host,
           trunk,
           account_sid
         }
