@@ -25,7 +25,8 @@ test('write cdr data', async(t) => {
     host: '10.10.100.1',
     remote_host: '10.10.100.8',
     trunk: 'device',
-    account_sid: 'xxxx'
+    account_sid: 'xxxx',
+    call_sid: 'foo'
   },
   {
     from: 'me2',
@@ -41,16 +42,17 @@ test('write cdr data', async(t) => {
     host: '10.10.100.1',
     remote_host: '10.10.100.8',
     trunk: 'twilio',
-    account_sid: 'yyyy'
+    account_sid: 'yyyy',
+    call_sid: 'bar'
   }]);
   t.pass('wrote cdr');
 
-  result = await queryCdrs({limit: 10});
-  console.log(JSON.stringify(result));
-  t.ok(result.results[0].series[0].values.length === 2, 'queried cdrs')
+  result = await queryCdrs({account_sid: 'xxxx', page: 1, count:25});
+  //console.log(JSON.stringify(result));
+  t.ok(result.data.length === 1, 'queried cdrs')
 
-  result = await queryCdrs({account_sid: 'yyyy', trunk: 'twilio', limit: 10});
-  t.ok(result.results[0].series[0].values.length  === 1, 'queried cdrs by tags')
+  result = await queryCdrs({account_sid: 'yyyy', trunk: 'twilio', page: 1, count:25});
+  t.ok(result.data.length === 1, 'queried cdrs by trunk')
 
   result = await writeAlerts([{
     alert_type: AlertType.WEBHOOK_FAILURE,

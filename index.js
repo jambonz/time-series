@@ -37,17 +37,22 @@ const schemas = {
   }
 };
 
-const createCdrQuery = ({account_sid, trunk, limit}) => {
-  let sql = 'select * from cdrs ';
-  const filters = [];
-  if (account_sid) filters.push({key: 'account_sid', value: account_sid});
-  if (trunk) filters.push({key: 'trunk', value: trunk});
-  if (filters.length) {
-    sql += 'where ';
-    sql += filters.map((f) => `${f.key} = '${f.value}'`).join(' AND ');
-  }
-  sql += ' order by time desc ';
-  if (limit) sql += ` limit ${limit}`;
+const createCdrQuery = ({account_sid, page, count, trunk, direction, answered, days, start, end}) => {
+  let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}' `;
+  if (trunk) sql += `AND trunk = '${trunk}' `;
+  if (direction) sql += `AND direction = '${direction}' `;
+  if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
+
+  sql += ' ORDER BY time DESC';
+  if (count) sql += ` LIMIT ${count}`;
+  if (page) sql += ` OFFSET ${(page - 1) * count}`;
+  return sql;
+};
+const createCdrCountQuery = ({account_sid, page, count, trunk, direction, answered, days, start, end}) => {
+  let sql = `SELECT COUNT(call_sid) from cdrs WHERE account_sid = '${account_sid}' `;
+  if (trunk) sql += `AND trunk = '${trunk}' `;
+  if (direction) sql += `AND direction = '${direction}' `;
+  if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
   return sql;
 };
 
@@ -81,7 +86,7 @@ const writeCdrs = async(client, cdrs) => {
       const {direction, host, trunk, account_sid, answered, attempted_at, ...fields} = cdr;
       return {
         measurement: 'cdrs',
-        timestamp: attempted_at,
+        timestamp: new Date(attempted_at),
         fields,
         tags: {
           direction,
@@ -98,8 +103,34 @@ const writeCdrs = async(client, cdrs) => {
 
 const queryCdrs = async(client, opts) => {
   if (!client._initialized) await initDatabase(client, 'alerts');
+  const response = {
+    total: 0,
+    batch: opts.count,
+    page: opts.page,
+    data: []
+  };
+  const sqlTotal = createCdrCountQuery(opts);
+  const obj = await client.queryRaw(sqlTotal);
+  if (!obj.results || !obj.results[0].series) return response;
+
+  response.total = obj.results[0].series[0].values[1];
   const sql = createCdrQuery(opts);
-  return await client.queryRaw(sql);
+  const res = await client.queryRaw(sql);
+  if (res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    const data = values.map((v) => {
+      const obj = {};
+      v.forEach((val, idx) => {
+        const key = 'time' === columns[idx] ? 'attempted_at' : columns[idx];
+        let retvalue = val;
+        if (['answered_at', 'terminated_at'].includes(key)) retvalue = new Date(val);
+        obj[key] = retvalue;
+      });
+      return obj;
+    });
+    response.data = data;
+  }
+  return response;
 };
 
 const writeAlerts = async(client, alerts) => {
