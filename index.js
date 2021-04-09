@@ -42,7 +42,11 @@ const createCdrQuery = ({account_sid, page, count, trunk, direction, answered, d
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
   if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
-
+  if (days) sql + `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= ${start} `;
+    if (end) sql += `AND time <= ${end} `;
+  }
   sql += ' ORDER BY time DESC';
   if (count) sql += ` LIMIT ${count}`;
   if (page) sql += ` OFFSET ${(page - 1) * count}`;
@@ -53,6 +57,11 @@ const createCdrCountQuery = ({account_sid, page, count, trunk, direction, answer
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
   if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
+  if (days) sql + `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= ${start} `;
+    if (end) sql += `AND time <= ${end} `;
+  }
   return sql;
 };
 
@@ -112,8 +121,8 @@ const queryCdrs = async(client, opts) => {
   const sqlTotal = createCdrCountQuery(opts);
   const obj = await client.queryRaw(sqlTotal);
   if (!obj.results || !obj.results[0].series) return response;
+  response.total = obj.results[0].series[0].values[0][1];
 
-  response.total = obj.results[0].series[0].values[1];
   const sql = createCdrQuery(opts);
   const res = await client.queryRaw(sql);
   if (res.results[0].series && res.results[0].series.length) {
