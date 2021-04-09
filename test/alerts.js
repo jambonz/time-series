@@ -17,9 +17,9 @@ test('write cdr data', async(t) => {
     sip_callid: 'foo@127.0.0.1',
     answered: true,
     duration: 22,
-    attempted_at: new Date().getTime() - 40,
-    answered_at: new Date().getTime() - 30,
-    terminated_at: new Date().getTime(),
+    attempted_at: new Date(Date.now() - (3600 * 1000)),
+    answered_at: Date.now() - (3590 * 1000),
+    terminated_at: Date.now(),
     termination_reason: 'caller hungup',
     direction: 'inbound',
     host: '10.10.100.1',
@@ -33,9 +33,9 @@ test('write cdr data', async(t) => {
     sip_callid: 'foo@127.0.0.1',
     answered: false,
     duration: 20,
-    attempted_at: new Date().getTime() - 40,
-    answered_at: new Date().getTime() - 30,
-    terminated_at: new Date().getTime(),
+    attempted_at: new Date(Date.now() - (7200 * 1000)),
+    answered_at: Date.now() - (7180 * 1000),
+    terminated_at: Date.now(),
     termination_reason: 'caller hungup',
     direction: 'inbound',
     host: '10.10.100.1',
@@ -46,7 +46,7 @@ test('write cdr data', async(t) => {
   t.pass('wrote cdr');
 
   result = await queryCdrs({limit: 10});
-  //console.log(JSON.stringify(result));
+  console.log(JSON.stringify(result));
   t.ok(result.results[0].series[0].values.length === 2, 'queried cdrs')
 
   result = await queryCdrs({account_sid: 'yyyy', trunk: 'twilio', limit: 10});

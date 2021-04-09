@@ -8,12 +8,9 @@ const schemas = {
       call_sid: Influx.FieldType.STRING,
       from: Influx.FieldType.STRING,
       to: Influx.FieldType.STRING,
-      answered: Influx.FieldType.BOOLEAN,
       sip_callid: Influx.FieldType.STRING,
       sip_status: Influx.FieldType.INTEGER,
       duration: Influx.FieldType.INTEGER,
-      attempted_at: Influx.FieldType.INTEGER,
-      answered_at: Influx.FieldType.INTEGER,
       terminated_at: Influx.FieldType.INTEGER,
       termination_reason: Influx.FieldType.STRING,
       remote_host: Influx.FieldType.STRING
@@ -22,7 +19,8 @@ const schemas = {
       'account_sid',
       'host',
       'trunk',
-      'direction'
+      'direction',
+      'answered'
     ]
   },
   alerts: {
@@ -80,15 +78,17 @@ const writeCdrs = async(client, cdrs) => {
   if (!client._initialized) await initDatabase(client, 'cdrs');
   cdrs = (Array.isArray(cdrs) ? cdrs : [cdrs])
     .map((cdr) => {
-      const {direction, host, trunk, account_sid, ...fields} = cdr;
+      const {direction, host, trunk, account_sid, answered, attempted_at, ...fields} = cdr;
       return {
         measurement: 'cdrs',
+        timestamp: attempted_at,
         fields,
         tags: {
           direction,
           host,
           trunk,
-          account_sid
+          account_sid,
+          answered
         }
       };
     });
