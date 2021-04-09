@@ -41,27 +41,29 @@ const createCdrQuery = ({account_sid, page, count, trunk, direction, answered, d
   let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}' `;
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
-  if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
-  if (days) sql + `AND time > now() - ${days}d `;
+  if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
+  if (days) sql += `AND time > now() - ${days}d `;
   else {
-    if (start) sql += `AND time >= ${start} `;
-    if (end) sql += `AND time <= ${end} `;
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
   }
   sql += ' ORDER BY time DESC';
   if (count) sql += ` LIMIT ${count}`;
   if (page) sql += ` OFFSET ${(page - 1) * count}`;
+  //console.log(sql);
   return sql;
 };
 const createCdrCountQuery = ({account_sid, page, count, trunk, direction, answered, days, start, end}) => {
   let sql = `SELECT COUNT(call_sid) from cdrs WHERE account_sid = '${account_sid}' `;
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
-  if (typeof answered === 'boolean') sql += `AND answered = ${answered ? 'true' : 'false'} `;
-  if (days) sql + `AND time > now() - ${days}d `;
+  if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
+  if (days) sql += `AND time > now() - ${days}d `;
   else {
-    if (start) sql += `AND time >= ${start} `;
-    if (end) sql += `AND time <= ${end} `;
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
   }
+  //console.log(sql);
   return sql;
 };
 
@@ -112,6 +114,7 @@ const writeCdrs = async(client, cdrs) => {
 
 const queryCdrs = async(client, opts) => {
   if (!client._initialized) await initDatabase(client, 'alerts');
+  //console.log(JSON.stringify(opts));
   const response = {
     total: 0,
     batch: opts.count,
@@ -133,6 +136,7 @@ const queryCdrs = async(client, opts) => {
         const key = 'time' === columns[idx] ? 'attempted_at' : columns[idx];
         let retvalue = val;
         if (['answered_at', 'terminated_at'].includes(key)) retvalue = new Date(val);
+        if (key === 'answered') retvalue = 'true' === val ? true : false;
         obj[key] = retvalue;
       });
       return obj;
