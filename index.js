@@ -53,7 +53,7 @@ const createCdrQuery = ({account_sid, page, count, trunk, direction, answered, d
   //console.log(sql);
   return sql;
 };
-const createCdrCountQuery = ({account_sid, page, count, trunk, direction, answered, days, start, end}) => {
+const createCdrCountQuery = ({account_sid, trunk, direction, answered, days, start, end}) => {
   let sql = `SELECT COUNT(call_sid) from cdrs WHERE account_sid = '${account_sid}' `;
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
@@ -67,18 +67,30 @@ const createCdrCountQuery = ({account_sid, page, count, trunk, direction, answer
   return sql;
 };
 
-const createAlertQuery = ({account_sid, alert_type, limit}) => {
-  let sql = 'select * from alerts ';
-  const filters = [];
-  if (account_sid) filters.push({key: 'account_sid', value: account_sid});
-  if (alert_type) filters.push({key: 'alert_type', value: alert_type});
-  if (filters.length) {
-    sql += 'where ';
-    sql += filters.map((f) => `${f.key} = '${f.value}'`).join(' AND ');
+const createAlertsQuery = ({account_sid, alert_type, page, count, days, start, end}) => {
+  let sql = `SELECT * FROM alerts WHERE account_sid = '${account_sid}' `;
+  if (alert_type) sql += `AND alert_type = '${alert_type}' `;
+  if (days) sql += `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
   }
-  sql += ' order by time desc ';
-  if (limit) sql += ` limit ${limit}`;
-  debug(`createAlertQuery: ${sql}`);
+  sql += ' ORDER BY time DESC';
+  if (count) sql += ` LIMIT ${count}`;
+  if (page) sql += ` OFFSET ${(page - 1) * count}`;
+  //console.log(sql);
+  return sql;
+};
+
+const createAlertsCountQuery = ({account_sid, alert_type, days, start, end}) => {
+  let sql = `SELECT COUNT(message) FROM alerts WHERE account_sid = '${account_sid}' `;
+  if (alert_type) sql += `AND alert_type = '${alert_type}' `;
+  if (days) sql += `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
+  }
+  //console.log(sql);
   return sql;
 };
 
@@ -123,6 +135,7 @@ const queryCdrs = async(client, opts) => {
   };
   const sqlTotal = createCdrCountQuery(opts);
   const obj = await client.queryRaw(sqlTotal);
+  //console.log(JSON.stringify(obj));
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
@@ -160,14 +173,39 @@ const writeAlerts = async(client, alerts) => {
         }
       };
     });
-  debug(`writing alerts: ${JSON.stringify(alerts)}`);
+  //console.log(`writing alerts: ${JSON.stringify(alerts)}`);
   return await client.writePoints(alerts);
 };
 
 const queryAlerts = async(client, opts) => {
   if (!client._initialized) await initDatabase(client, 'alerts');
-  const sql = createAlertQuery(opts);
-  return await client.queryRaw(sql);
+  const response = {
+    total: 0,
+    batch: opts.count,
+    page: opts.page,
+    data: []
+  };
+  const sqlTotal = createAlertsCountQuery(opts);
+  const obj = await client.queryRaw(sqlTotal);
+  //console.log(JSON.stringify(obj));
+  if (!obj.results || !obj.results[0].series) return response;
+  response.total = obj.results[0].series[0].values[0][1];
+
+  const sql = createAlertsQuery(opts);
+  const res = await client.queryRaw(sql);
+  if (res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    const data = values.map((v) => {
+      const obj = {};
+      v.forEach((val, idx) => {
+        const key = columns[idx];
+        obj[key] = val;
+      });
+      return obj;
+    });
+    response.data = data;
+  }
+  return response;
 };
 
 module.exports = (logger, opts) => {

@@ -57,15 +57,14 @@ test('write cdr data', async(t) => {
   result = await writeAlerts([{
     alert_type: AlertType.WEBHOOK_FAILURE,
     account_sid: 'yyyy',
+    url: 'http://foo.bar',
+    vendor: 'google',
     message: 'your webhook returned 404'
   }]);
   t.pass('wrote alert');
 
-  result = await queryAlerts({limit: 10});
+  result = await queryAlerts({account_sid: 'yyyy', page: 1, count: 25, days: 7});
   //console.log(JSON.stringify(result));
-  t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts')
-
-  result = await queryAlerts({alert_type: AlertType.WEBHOOK_FAILURE, limit: 10});
-  t.ok(result.results[0].series[0].values.length  === 1, 'queried alerts by tags')
+  t.ok(result.data.length === 1, 'queried alerts')
 
 });
