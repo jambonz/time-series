@@ -176,7 +176,7 @@ const writeAlerts = async(client, alerts) => {
   if (!client._initialized) await initDatabase(client, 'alerts');
   alerts = (Array.isArray(alerts) ? alerts : [alerts])
     .map((alert) => {
-      const {alert_type, account_sid, url, status, vendor, count, detail} = alert;
+      const {alert_type, account_sid, url, status, vendor, count, detail, timestamp} = alert;
       let message = alert.message;
       if (!message) {
         switch (alert_type) {
@@ -219,6 +219,7 @@ const writeAlerts = async(client, alerts) => {
         }
       }
       const obj = {measurement: 'alerts', fields: { message }, tags: { alert_type, account_sid }};
+      if (timestamp) obj.fields.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
       return obj;
     });
