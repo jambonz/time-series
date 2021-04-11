@@ -1,3 +1,3 @@
 require('./docker_start');
-require('./alerts');
+require('./unit-tests');
 require('./docker_stop');
