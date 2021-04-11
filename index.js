@@ -1,4 +1,3 @@
-const debug = require('debug')('jambonz:time-series');
 const assert = require('assert');
 const Influx = require('influx');
 const AlertType = {
@@ -50,6 +49,25 @@ const schemas = {
   }
 };
 
+const writeData = async(client) => {
+  const {data, initialized} = client.locals;
+  if (0 === data.length || client.locals.writing) return;
+  if (!initialized) await initDatabase(client, client.locals.db);
+  try {
+    //console.log(`writing data ${JSON.stringify(data)}`);
+    client.locals.writing = true;
+    await client.writePoints(data);
+    client.locals.writing = false;
+    client.locals.data = [];
+  } catch (err) {
+    console.log(err);
+    client.locals.writing = false;
+    client.locals.data = [];
+    throw err;
+  }
+};
+
+
 const createCdrQuery = ({account_sid, page, page_size, trunk, direction, answered, days, start, end}) => {
   let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}' `;
   if (trunk) sql += `AND trunk = '${trunk}' `;
@@ -67,7 +85,7 @@ const createCdrQuery = ({account_sid, page, page_size, trunk, direction, answere
   return sql;
 };
 const createCdrCountQuery = ({account_sid, trunk, direction, answered, days, start, end}) => {
-  let sql = `SELECT COUNT(call_sid) from cdrs WHERE account_sid = '${account_sid}' `;
+  let sql = `SELECT COUNT(sip_callid) from cdrs WHERE account_sid = '${account_sid}' `;
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
   if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
@@ -112,11 +130,11 @@ const initDatabase = async(client, dbName) => {
   if (!names.includes(dbName)) {
     await client.createDatabase(dbName);
   }
-  client._initialized = true;
+  client.locals.initialized = true;
 };
 
 const writeCdrs = async(client, cdrs) => {
-  if (!client._initialized) await initDatabase(client, 'cdrs');
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   cdrs = (Array.isArray(cdrs) ? cdrs : [cdrs])
     .map((cdr) => {
       const {direction, host, trunk, account_sid, answered, attempted_at, ...fields} = cdr;
@@ -133,13 +151,16 @@ const writeCdrs = async(client, cdrs) => {
         }
       };
     });
-  debug(`writing cdrs: ${JSON.stringify(cdrs)}`);
-  return await client.writePoints(cdrs);
+  //console.log(`writing cdrs: ${JSON.stringify(cdrs)}`);
+  client.locals.data = [...client.locals.data, ...cdrs];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+  return;
 };
 
 const queryCdrs = async(client, opts) => {
-  if (!client._initialized) await initDatabase(client, 'alerts');
-  //console.log(JSON.stringify(opts));
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   const response = {
     total: 0,
     page_size: opts.page_size,
@@ -148,7 +169,7 @@ const queryCdrs = async(client, opts) => {
   };
   const sqlTotal = createCdrCountQuery(opts);
   const obj = await client.queryRaw(sqlTotal);
-  //console.log(JSON.stringify(obj));
+  //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
@@ -173,7 +194,7 @@ const queryCdrs = async(client, opts) => {
 };
 
 const writeAlerts = async(client, alerts) => {
-  if (!client._initialized) await initDatabase(client, 'alerts');
+  if (!client.locals.initialized) await initDatabase(client, 'alerts');
   alerts = (Array.isArray(alerts) ? alerts : [alerts])
     .map((alert) => {
       const {alert_type, account_sid, url, status, vendor, count, detail, timestamp} = alert;
@@ -224,11 +245,15 @@ const writeAlerts = async(client, alerts) => {
       return obj;
     });
   //console.log(`writing alerts: ${JSON.stringify(alerts)}`);
-  return await client.writePoints(alerts);
+  client.locals.data = [...client.locals.data, ...alerts];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+  return;
 };
 
 const queryAlerts = async(client, opts) => {
-  if (!client._initialized) await initDatabase(client, 'alerts');
+  if (!client.locals.initialized) await initDatabase(client, 'alerts');
   const response = {
     total: 0,
     page_size: opts.page_size,
@@ -264,8 +289,28 @@ module.exports = (logger, opts) => {
 
   const cdrClient = new Influx.InfluxDB({database: 'cdrs', schemas: schemas.cdr, ...opts});
   const alertClient = new Influx.InfluxDB({database: 'alerts', schemas: schemas.alerts, ...opts});
-  cdrClient._initialized = false;
-  alertClient._initialized = false;
+
+  cdrClient.locals = {
+    db: 'cdrs',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
+  alertClient.locals = {
+    db: 'alerts',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
+
+  if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
+    setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
+    setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
+  }
 
   return {
     writeCdrs: writeCdrs.bind(null, cdrClient),

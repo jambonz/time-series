@@ -8,7 +8,7 @@ const {
   writeAlerts,
   queryAlerts,
   AlertType
-} = require('..')(consoleLogger, '127.0.0.1');
+} = require('..')(consoleLogger, '127.0.0.1', {commitSize: 1});
 
 test('write cdr data', async(t) => {
   let result = await writeCdrs([{
