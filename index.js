@@ -96,7 +96,7 @@ const createAlertsQuery = ({account_sid, alert_type, page, page_size, days, star
 };
 
 const createAlertsCountQuery = ({account_sid, alert_type, days, start, end}) => {
-  let sql = `SELECT COUNT(*) FROM alerts WHERE account_sid = '${account_sid}' `;
+  let sql = `SELECT COUNT(message) FROM alerts WHERE account_sid = '${account_sid}' `;
   if (alert_type) sql += `AND alert_type = '${alert_type}' `;
   if (days) sql += `AND time > now() - ${days}d `;
   else {
@@ -219,7 +219,7 @@ const writeAlerts = async(client, alerts) => {
         }
       }
       const obj = {measurement: 'alerts', fields: { message }, tags: { alert_type, account_sid }};
-      if (timestamp) obj.fields.timestamp = timestamp;
+      if (timestamp) obj.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
       return obj;
     });
@@ -237,7 +237,7 @@ const queryAlerts = async(client, opts) => {
   };
   const sqlTotal = createAlertsCountQuery(opts);
   const obj = await client.queryRaw(sqlTotal);
-  //console.log(JSON.stringify(obj));
+  //console.log(`query total alerts: ${sqlTotal}: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
