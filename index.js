@@ -3,6 +3,7 @@ const Influx = require('influx');
 const AlertType = {
   WEBHOOK_STATUS_FAILURE: 'webhook-failure',
   WEBHOOK_CONNECTION_FAILURE: 'webhook-connection-failure',
+  WEBHOOK_URL_NOTFOUND: 'webhook-url-notfound',
   WEBHOOK_AUTH_FAILURE: 'webhook-auth-failure',
   TTS_NOT_PROVISIONED: 'no-tts',
   STT_NOT_PROVISIONED: 'no-stt',
@@ -209,6 +210,9 @@ const writeAlerts = async(client, alerts) => {
             break;
           case AlertType.WEBHOOK_AUTH_FAILURE:
             message = `authentication failure: ${url}`;
+            break;
+          case AlertType.WEBHOOK_URL_NOTFOUND:
+            message = `webhook url not found: ${url}`;
             break;
           case AlertType.TTS_NOT_PROVISIONED:
             message = `text to speech credentials for ${vendor} have not been provisioned`;
