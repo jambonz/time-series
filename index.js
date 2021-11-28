@@ -12,7 +12,8 @@ const AlertType = {
   CARRIER_NOT_PROVISIONED: 'no-carrier',
   CALL_LIMIT: 'call-limit',
   DEVICE_LIMIT: 'device-limit',
-  API_LIMIT: 'api-limit'
+  API_LIMIT: 'api-limit',
+  ACCOUNT_INACTIVE: 'account is inactive or suspended'
 };
 
 const schemas = {
