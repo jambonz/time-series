@@ -28,7 +28,8 @@ const schemas = {
       duration: Influx.FieldType.INTEGER,
       terminated_at: Influx.FieldType.INTEGER,
       termination_reason: Influx.FieldType.STRING,
-      remote_host: Influx.FieldType.STRING
+      remote_host: Influx.FieldType.STRING,
+      trace_id: Influx.FieldType.STRING
     },
     tags: [
       'account_sid',

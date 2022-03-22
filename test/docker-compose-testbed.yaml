@@ -2,6 +2,6 @@ version: '3'
 
 services:  
   influxdb:
-    image: influxdb:1.8-alpine
+    image: influxdb:1.8
     ports:
       - "8086:8086"
