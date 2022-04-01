@@ -379,6 +379,7 @@ module.exports = (logger, opts) => {
 
   const cdrClient = new Influx.InfluxDB({database: 'cdrs', schemas: schemas.cdr, ...opts});
   const alertClient = new Influx.InfluxDB({database: 'alerts', schemas: schemas.alerts, ...opts});
+  const callCountClient = new Influx.InfluxDB({database: 'call_counts', schemas: schemas.call_counts, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -396,15 +397,24 @@ module.exports = (logger, opts) => {
     commitInterval: opts.commitInterval || 10,
     data: []
   };
+  callCountClient.locals = {
+    db: 'call_counts',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
+    setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
   }
 
   return {
-    writeCallCount: writeCallCount.bind(null, cdrClient),
-    queryCallCounts: queryCallCounts.bind(null, cdrClient),
+    writeCallCount: writeCallCount.bind(null, callCountClient),
+    queryCallCounts: queryCallCounts.bind(null, callCountClient),
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrs: queryCdrs.bind(null, cdrClient),
     writeAlerts: writeAlerts.bind(null, alertClient),
