@@ -49,6 +49,15 @@ const schemas = {
       'account_sid',
       'alert_type'
     ]
+  },
+  call_counts: {
+    measurement: 'call_counts',
+    fields: {
+      calls_in_progress: Influx.FieldType.INTEGER,
+    },
+    tags: [
+      'account_sid'
+    ]
   }
 };
 
@@ -70,9 +79,33 @@ const writeData = async(client) => {
   }
 };
 
+const createCallCountsQuery = ({account_sid, page, page_size, days, start, end}) => {
+  let sql = `SELECT * from call_counts WHERE account_sid = '${account_sid}'`;
+  if (days) sql += `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
+  }
+  sql += ' ORDER BY time DESC';
+  if (page_size) sql += ` LIMIT ${page_size}`;
+  if (page) sql += ` OFFSET ${(page - 1) * page_size}`;
+  //console.log(sql);
+  return sql;
+};
+
+const createCallCountsCountQuery = ({account_sid, days, start, end}) => {
+  let sql = `SELECT COUNT(calls_in_progress) from call_counts WHERE account_sid = '${account_sid}' `;
+  if (days) sql += `AND time > now() - ${days}d `;
+  else {
+    if (start) sql += `AND time >= '${start}' `;
+    if (end) sql += `AND time <= '${end}' `;
+  }
+  //console.log(sql);
+  return sql;
+};
 
 const createCdrQuery = ({account_sid, page, page_size, trunk, direction, answered, days, start, end}) => {
-  let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}' `;
+  let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}'`;
   if (trunk) sql += `AND trunk = '${trunk}' `;
   if (direction) sql += `AND direction = '${direction}' `;
   if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
@@ -134,6 +167,57 @@ const initDatabase = async(client, dbName) => {
     await client.createDatabase(dbName);
   }
   client.locals.initialized = true;
+};
+
+const writeCallCount = async(client, count) => {
+  if (!client.locals.initialized) await initDatabase(client, 'call_counts');
+  const {account_sid, ...fields} = count;
+  const data = {
+    measurement: 'call_counts',
+    fields,
+    tags: {
+      account_sid
+    }
+  };
+  client.locals.data = [...client.locals.data, ...[data]];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+  return;
+};
+
+const queryCallCounts = async(client, opts) => {
+  if (!client.locals.initialized) await initDatabase(client, 'call_counts');
+  const response = {
+    total: 0,
+    page_size: opts.page_size,
+    page: opts.page,
+    data: []
+  };
+  const sqlTotal = createCallCountsCountQuery(opts);
+  const obj = await client.queryRaw(sqlTotal);
+  //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
+  if (!obj.results || !obj.results[0].series) return response;
+  response.total = obj.results[0].series[0].values[0][1];
+
+  const sql = createCallCountsQuery(opts);
+  const res = await client.queryRaw(sql);
+  //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
+  if (res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    const data = values.map((v) => {
+      const obj = {};
+      v.forEach((val, idx) => {
+        v.forEach((val, idx) => {
+          const key = columns[idx];
+          obj[key] = val;
+        });
+      });
+      return obj;
+    });
+    response.data = data;
+  }
+  return response;
 };
 
 const writeCdrs = async(client, cdrs) => {
@@ -319,6 +403,8 @@ module.exports = (logger, opts) => {
   }
 
   return {
+    writeCallCount: writeCallCount.bind(null, cdrClient),
+    queryCallCounts: queryCallCounts.bind(null, cdrClient),
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrs: queryCdrs.bind(null, cdrClient),
     writeAlerts: writeAlerts.bind(null, alertClient),

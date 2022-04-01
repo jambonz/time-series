@@ -3,6 +3,8 @@ const Influx = require('influx');
 const consoleLogger = {error: console.error, info: console.log, debug: console.log};
 
 const {
+  writeCallCount,
+  queryCallCounts,
   writeCdrs,
   queryCdrs,
   writeAlerts,
@@ -10,7 +12,7 @@ const {
   AlertType
 } = require('..')(consoleLogger, '127.0.0.1', {commitSize: 1});
 
-test('write cdr data', async(t) => {
+test('write timeseries data', async(t) => {
   let result = await writeCdrs([{
     from: 'me',
     to: 'you',
@@ -115,6 +117,22 @@ test('write cdr data', async(t) => {
 
   result = await queryAlerts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
-  t.ok(result.data.length === 11, 'queried alerts')
+  t.ok(result.data.length === 11, 'queried alerts');
+
+  result = await writeCallCount(
+    {
+      calls_in_progress: 49,
+      account_sid: 'yyyy'
+    });
+  result = await writeCallCount(
+    {
+      calls_in_progress: 50,
+      account_sid: 'yyyy'
+    });
+  t.pass('wrote call counts');
+
+  result = await queryCallCounts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
+  //console.log(JSON.stringify(result));
+  t.ok(result.data.length === 2, 'queried call counts');
 
 });
