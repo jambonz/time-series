@@ -5,6 +5,7 @@ const AlertType = {
   WEBHOOK_CONNECTION_FAILURE: 'webhook-connection-failure',
   WEBHOOK_URL_NOTFOUND: 'webhook-url-notfound',
   WEBHOOK_AUTH_FAILURE: 'webhook-auth-failure',
+  INVALID_APP_PAYLOAD: 'invalid-app-payload',
   TTS_NOT_PROVISIONED: 'no-tts',
   STT_NOT_PROVISIONED: 'no-stt',
   TTS_FAILURE: 'tts-failure',
@@ -134,8 +135,9 @@ const createCdrCountQuery = ({account_sid, trunk, direction, answered, days, sta
   return sql;
 };
 
-const createAlertsQuery = ({account_sid, alert_type, page, page_size, days, start, end}) => {
+const createAlertsQuery = ({account_sid, target_sid, alert_type, page, page_size, days, start, end}) => {
   let sql = `SELECT * FROM alerts WHERE account_sid = '${account_sid}' `;
+  if (target_sid) sql += `AND target_sid = '${target_sid}' `;
   if (alert_type) sql += `AND alert_type = '${alert_type}' `;
   if (days) sql += `AND time > now() - ${days}d `;
   else {
@@ -149,8 +151,9 @@ const createAlertsQuery = ({account_sid, alert_type, page, page_size, days, star
   return sql;
 };
 
-const createAlertsCountQuery = ({account_sid, alert_type, days, start, end}) => {
+const createAlertsCountQuery = ({account_sid, target_sid, alert_type, days, start, end}) => {
   let sql = `SELECT COUNT(message) FROM alerts WHERE account_sid = '${account_sid}' `;
+  if (target_sid) sql += `AND target_sid = '${target_sid}' `;
   if (alert_type) sql += `AND alert_type = '${alert_type}' `;
   if (days) sql += `AND time > now() - ${days}d `;
   else {
@@ -284,7 +287,7 @@ const writeAlerts = async(client, alerts) => {
   if (!client.locals.initialized) await initDatabase(client, 'alerts');
   alerts = (Array.isArray(alerts) ? alerts : [alerts])
     .map((alert) => {
-      const {alert_type, account_sid, url, status, vendor, count, detail, timestamp} = alert;
+      const {alert_type, account_sid, target_sid, url, status, vendor, count, detail, timestamp} = alert;
       let message = alert.message;
       if (!message) {
         switch (alert_type) {
@@ -299,6 +302,9 @@ const writeAlerts = async(client, alerts) => {
             break;
           case AlertType.WEBHOOK_URL_NOTFOUND:
             message = `webhook url not found: ${url}`;
+            break;
+          case AlertType.INVALID_APP_PAYLOAD:
+            message = `${url} return invalid app payload`;
             break;
           case AlertType.TTS_NOT_PROVISIONED:
             message = `text to speech credentials for ${vendor} have not been provisioned`;
@@ -329,7 +335,9 @@ const writeAlerts = async(client, alerts) => {
             break;
         }
       }
-      const obj = {measurement: 'alerts', fields: { message }, tags: { alert_type, account_sid }};
+      let tags =  { alert_type, account_sid };
+      if (target_sid) Object.assign(tags, {target_sid});
+      const obj = {measurement: 'alerts', fields: { message }, tags: tags};
       if (timestamp) obj.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
       return obj;
