@@ -74,6 +74,12 @@ test('write timeseries data', async(t) => {
       url: 'http://foo.bar'
     },
     {
+      alert_type: AlertType.INVALID_APP_PAYLOAD,
+      account_sid: 'yyyy',
+      target_sid: 'zzzz',
+      message: 'invalid app payload'
+    },
+    {
       alert_type: AlertType.TTS_NOT_PROVISIONED,
       account_sid: 'yyyy',
       vendor: 'google'
@@ -117,7 +123,12 @@ test('write timeseries data', async(t) => {
 
   result = await queryAlerts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
-  t.ok(result.data.length === 11, 'queried alerts');
+  t.ok(result.data.length === 12, 'queried alerts');
+  t.ok(result.data[0].target_sid === null)
+
+  result = await queryAlerts({account_sid: 'yyyy', target_sid: 'zzzz', page: 1, page_size: 25, days: 7});
+  t.ok(result.data.length === 1, 'queried alerts by target_sid');
+  t.ok(result.data[0].target_sid === 'zzzz')
 
   result = await writeCallCount(
     {
