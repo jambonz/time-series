@@ -350,6 +350,7 @@ const generateBindParameters = (opts) => {
   const params = {...opts};
   if (opts.days) params.timestamp = Date.now() * 1000000 - opts.days * 24 * 60 * 60 * 1000000000;
   if (opts.page) params.offset = opts.page  - 1 >= 0 && opts.page_size >= 0 ? (opts.page  - 1) * opts.page_size : 0;
+  if (opts.page_size) params.page_size = parseInt(opts.page_size);
   return params;
 };
 
