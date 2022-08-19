@@ -80,87 +80,81 @@ const writeData = async(client) => {
   }
 };
 
-const createCallCountsQuery = ({account_sid, page, page_size, days, start, end}) => {
-  let sql = `SELECT * from call_counts WHERE account_sid = '${account_sid}'`;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createCallCountsQuery = ({page, page_size, days, start, end}) => {
+  let sql = 'SELECT * from call_counts WHERE account_sid = $account_sid ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
   sql += ' ORDER BY time DESC';
-  if (page_size) sql += ` LIMIT ${page_size}`;
-  if (page) sql += ` OFFSET ${(page - 1) * page_size}`;
-  //console.log(sql);
+  if (page_size) sql += ' LIMIT $page_size';
+  if (page) sql += ' OFFSET $offset';
   return sql;
 };
 
-const createCallCountsCountQuery = ({account_sid, days, start, end}) => {
-  let sql = `SELECT COUNT(calls_in_progress) from call_counts WHERE account_sid = '${account_sid}' `;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createCallCountsCountQuery = ({days, start, end}) => {
+  let sql = 'SELECT COUNT(calls_in_progress) from call_counts WHERE account_sid = $account_sid ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
-  //console.log(sql);
   return sql;
 };
 
-const createCdrQuery = ({account_sid, page, page_size, trunk, direction, answered, days, start, end}) => {
-  let sql = `SELECT * from cdrs WHERE account_sid = '${account_sid}'`;
-  if (trunk) sql += `AND trunk = '${trunk}' `;
-  if (direction) sql += `AND direction = '${direction}' `;
-  if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createCdrQuery = ({page, page_size, trunk, direction, answered, days, start, end}) => {
+  let sql = 'SELECT * from cdrs WHERE account_sid = $account_sid ';
+  if (trunk) sql += 'AND trunk = $trunk ';
+  if (direction) sql += 'AND direction = $direction ';
+  if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
   sql += ' ORDER BY time DESC';
-  if (page_size) sql += ` LIMIT ${page_size}`;
-  if (page) sql += ` OFFSET ${(page - 1) * page_size}`;
-  //console.log(sql);
+  if (page_size) sql += ' LIMIT $page_size';
+  if (page) sql += ' OFFSET $offset';
   return sql;
 };
-const createCdrCountQuery = ({account_sid, trunk, direction, answered, days, start, end}) => {
-  let sql = `SELECT COUNT(sip_callid) from cdrs WHERE account_sid = '${account_sid}' `;
-  if (trunk) sql += `AND trunk = '${trunk}' `;
-  if (direction) sql += `AND direction = '${direction}' `;
-  if (['true', 'false'].includes(answered)) sql += `AND answered = '${answered}' `;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createCdrCountQuery = ({trunk, direction, answered, days, start, end}) => {
+  let sql = 'SELECT COUNT(sip_callid) from cdrs WHERE account_sid = $account_sid ';
+  if (trunk) sql += 'AND trunk = $trunk ';
+  if (direction) sql += 'AND direction = $direction ';
+  if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
-  //console.log(sql);
   return sql;
 };
 
-const createAlertsQuery = ({account_sid, target_sid, alert_type, page, page_size, days, start, end}) => {
-  let sql = `SELECT * FROM alerts WHERE account_sid = '${account_sid}' `;
-  if (target_sid) sql += `AND target_sid = '${target_sid}' `;
-  if (alert_type) sql += `AND alert_type = '${alert_type}' `;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createAlertsQuery = ({target_sid, alert_type, page, page_size, days, start, end}) => {
+  let sql = 'SELECT * FROM alerts WHERE account_sid = $account_sid ';
+  if (target_sid) sql += 'AND target_sid = $target_sid ';
+  if (alert_type) sql += 'AND alert_type = $alert_type ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
   sql += ' ORDER BY time DESC';
-  if (page_size) sql += ` LIMIT ${page_size}`;
-  if (page) sql += ` OFFSET ${(page - 1) * page_size}`;
-  //console.log(sql);
+  if (page_size) sql += ' LIMIT $page_size';
+  if (page) sql += ' OFFSET $offset';
   return sql;
 };
 
-const createAlertsCountQuery = ({account_sid, target_sid, alert_type, days, start, end}) => {
-  let sql = `SELECT COUNT(message) FROM alerts WHERE account_sid = '${account_sid}' `;
-  if (target_sid) sql += `AND target_sid = '${target_sid}' `;
-  if (alert_type) sql += `AND alert_type = '${alert_type}' `;
-  if (days) sql += `AND time > now() - ${days}d `;
+const createAlertsCountQuery = ({target_sid, alert_type, days, start, end}) => {
+  let sql = 'SELECT COUNT(message) FROM alerts WHERE account_sid = $account_sid ';
+  if (target_sid) sql += 'AND target_sid = $target_sid ';
+  if (alert_type) sql += 'AND alert_type = $alert_type ';
+  if (days) sql += 'AND time > $timestamp ';
   else {
-    if (start) sql += `AND time >= '${start}' `;
-    if (end) sql += `AND time <= '${end}' `;
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
   }
-  //console.log(sql);
   return sql;
 };
 
@@ -197,14 +191,15 @@ const queryCallCounts = async(client, opts) => {
     page: opts.page,
     data: []
   };
+  const params = generateBindParameters(opts);
   const sqlTotal = createCallCountsCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal);
+  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
   //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCallCountsQuery(opts);
-  const res = await client.queryRaw(sql);
+  const res = await client.queryRaw(sql, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -257,14 +252,15 @@ const queryCdrs = async(client, opts) => {
     page: opts.page,
     data: []
   };
+  const params = generateBindParameters(opts);
   const sqlTotal = createCdrCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal);
+  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCdrQuery(opts);
-  const res = await client.queryRaw(sql);
+  const res = await client.queryRaw(sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {
@@ -350,6 +346,13 @@ const writeAlerts = async(client, alerts) => {
   return;
 };
 
+const generateBindParameters = (opts) => {
+  const params = {...opts};
+  if (opts.days) params.timestamp = Date.now() * 1000000 - opts.days * 24 * 60 * 60 * 1000000000;
+  if (opts.page) params.offset = opts.page  - 1 >= 0 && opts.page_size >= 0 ? (opts.page  - 1) * opts.page_size : 0;
+  return params;
+};
+
 const queryAlerts = async(client, opts) => {
   if (!client.locals.initialized) await initDatabase(client, 'alerts');
   const response = {
@@ -358,14 +361,15 @@ const queryAlerts = async(client, opts) => {
     page: opts.page,
     data: []
   };
+  const params = generateBindParameters(opts);
   const sqlTotal = createAlertsCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal);
+  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
   //console.log(`query total alerts: ${sqlTotal}: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createAlertsQuery(opts);
-  const res = await client.queryRaw(sql);
+  const res = await client.queryRaw(sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {
