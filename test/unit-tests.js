@@ -4,6 +4,7 @@ const consoleLogger = {error: console.error, info: console.log, debug: console.l
 
 const {
   writeCallCount,
+  writeCallCountSP,
   queryCallCounts,
   queryCallCountsSP,
   writeCdrs,
@@ -121,22 +122,37 @@ test('write timeseries data', async(t) => {
       account_sid: 'yyyy',
     },
     {
-      alert_type: AlertType.CALL_LIMIT,
+      alert_type: AlertType.SP_CALL_LIMIT,
+      service_provider_sid: 'zzzzz',
+      count: 50,
+    },
+    {
+      alert_type: AlertType.ACCOUNT_CALL_LIMIT,
       service_provider_sid: 'zzzzz',
       account_sid: 'yyyy',
       count: 50,
     },
     {
-      alert_type: AlertType.DEVICE_LIMIT,
+      alert_type: AlertType.SP_DEVICE_LIMIT,
+      service_provider_sid: 'zzzzz',
+      count: 500,
+    },
+    {
+      alert_type: AlertType.ACCOUNT_DEVICE_LIMIT,
       service_provider_sid: 'zzzzz',
       account_sid: 'yyyy',
       count: 250,
     },
     {
-      alert_type: AlertType.API_LIMIT,
+      alert_type: AlertType.ACCOUNT_API_LIMIT,
       service_provider_sid: 'zzzzz',
       account_sid: 'yyyy',
       count: 120,
+    },
+    {
+      alert_type: AlertType.SP_API_LIMIT,
+      service_provider_sid: 'zzzzz',
+      count: 300,
     }
   ]);
   t.pass('wrote alerts');
@@ -158,7 +174,8 @@ test('write timeseries data', async(t) => {
   t.ok(result.data[0].target_sid === 'zzzz')
 
   result = await queryAlertsSP({service_provider_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
-  t.ok(result.data.length === 12, 'queried alerts by service_provider_sid');
+  //console.log(result);
+  t.ok(result.data.length === 15, 'queried alerts by service_provider_sid');
 
   result = await writeCallCount(
     {
@@ -172,14 +189,25 @@ test('write timeseries data', async(t) => {
       service_provider_sid: 'zzzzz',
       account_sid: 'yyyy'
     });
-  t.pass('wrote call counts');
+  t.pass('wrote call counts for account');
 
-  result = await queryCallCounts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
-  //console.log(JSON.stringify(result));
-  t.ok(result.data.length === 2, 'queried call counts by account_sid');
+  result = await writeCallCountSP(
+    {
+      calls_in_progress: 500,
+      service_provider_sid: 'zzzzz'
+    });
+  result = await writeCallCountSP(
+    {
+      calls_in_progress: 501,
+      service_provider_sid: 'zzzzz'
+    });
+  t.pass('wrote call counts for service provider');
 
   result = await queryCallCountsSP({service_provider_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
   t.ok(result.data.length === 2, 'queried call counts by service provider sid');
 
+  result = await queryCallCounts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
+  //console.log(JSON.stringify(result));
+  t.ok(result.data.length === 2, 'queried call counts by account_sid');
 });

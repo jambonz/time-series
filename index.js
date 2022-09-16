@@ -11,9 +11,12 @@ const AlertType = {
   TTS_FAILURE: 'tts-failure',
   STT_FAILURE: 'stt-failure',
   CARRIER_NOT_PROVISIONED: 'no-carrier',
-  CALL_LIMIT: 'call-limit',
-  DEVICE_LIMIT: 'device-limit',
-  API_LIMIT: 'api-limit',
+  ACCOUNT_CALL_LIMIT: 'account-call-limit',
+  ACCOUNT_DEVICE_LIMIT: 'account-device-limit',
+  ACCOUNT_API_LIMIT: 'account-api-limit',
+  SP_CALL_LIMIT: 'service-provider-call-limit',
+  SP_DEVICE_LIMIT: 'service-provider-device-limit',
+  SP_API_LIMIT: 'service-provider-api-limit',
   ACCOUNT_INACTIVE: 'account is inactive or suspended'
 };
 
@@ -62,6 +65,15 @@ const schemas = {
       'service_provider_sid',
       'account_sid'
     ]
+  },
+  sp_call_counts: {
+    measurement: 'sp_call_counts',
+    fields: {
+      calls_in_progress: Influx.FieldType.INTEGER,
+    },
+    tags: [
+      'service_provider_sid'
+    ]
   }
 };
 
@@ -85,7 +97,7 @@ const writeData = async(client) => {
 
 /* for Service Provider */
 const createCallCountsQuerySP = ({page, page_size, days, start, end}) => {
-  let sql = 'SELECT * from call_counts WHERE service_provider_sid = $service_provider_sid ';
+  let sql = 'SELECT * from sp_call_counts WHERE service_provider_sid = $service_provider_sid ';
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -98,7 +110,7 @@ const createCallCountsQuerySP = ({page, page_size, days, start, end}) => {
 };
 
 const createCallCountsCountQuerySP = ({days, start, end}) => {
-  let sql = 'SELECT COUNT(calls_in_progress) from call_counts WHERE service_provider_sid = $service_provider_sid ';
+  let sql = 'SELECT COUNT(calls_in_progress) from sp_call_counts WHERE service_provider_sid = $service_provider_sid ';
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -191,7 +203,8 @@ const createCdrCountQuery = ({trunk, direction, answered, days, start, end}) => 
 
 /* for Service Provider */
 const createAlertsQuerySP = ({target_sid, alert_type, page, page_size, days, start, end}) => {
-  let sql = 'SELECT * FROM alerts WHERE service_provider_sid = $service_provider_sid ';
+  // eslint-disable-next-line max-len
+  let sql = 'SELECT service_provider_sid, message, detail FROM alerts WHERE service_provider_sid = $service_provider_sid ';
   if (target_sid) sql += 'AND target_sid = $target_sid ';
   if (alert_type) sql += 'AND alert_type = $alert_type ';
   if (days) sql += 'AND time > $timestamp ';
@@ -271,8 +284,25 @@ const writeCallCount = async(client, count) => {
   return;
 };
 
+const writeCallCountSP = async(client, count) => {
+  if (!client.locals.initialized) await initDatabase(client, 'sp_call_counts');
+  const {service_provider_sid, ...fields} = count;
+  const data = {
+    measurement: 'sp_call_counts',
+    fields,
+    tags: {
+      service_provider_sid
+    }
+  };
+  client.locals.data = [...client.locals.data, ...[data]];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+  return;
+};
+
 const queryCallCountsSP = async(client, opts) => {
-  if (!client.locals.initialized) await initDatabase(client, 'call_counts');
+  if (!client.locals.initialized) await initDatabase(client, 'sp_call_counts');
   const response = {
     total: 0,
     page_size: opts.page_size,
@@ -487,15 +517,29 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.CARRIER_NOT_PROVISIONED:
             message = 'outbound call failure: no carriers have been provisioned';
             break;
-          case AlertType.CALL_LIMIT:
-            message = `you have exceeded your provisioned call limit of ${count}; please consider upgrading your plan`;
+          case AlertType.ACCOUNT_CALL_LIMIT:
+            message = `you have exceeded your account call limit of ${count}; please consider upgrading your plan`;
             break;
-          case AlertType.DEVICE_LIMIT:
+          case AlertType.ACCOUNT_DEVICE_LIMIT:
             message =
-              `you have exceeded your device registration limit of ${count}; please consider upgrading your plan`;
+              // eslint-disable-next-line max-len
+              `you have exceeded your account limit of ${count} registered devices; please consider upgrading your plan`;
             break;
-          case AlertType.API_LIMIT:
-            message = `you have exceeded your api limit of ${count}; please consider upgrading your plan`;
+          case AlertType.ACCOUNT_API_LIMIT:
+            message = `you have exceeded your account api limit of ${count}; please consider upgrading your plan`;
+            break;
+          case AlertType.SP_CALL_LIMIT:
+            // eslint-disable-next-line max-len
+            message = `you have exceeded your service provider call limit of ${count}; please consider upgrading your plan`;
+            break;
+          case AlertType.SP_DEVICE_LIMIT:
+            message =
+              // eslint-disable-next-line max-len
+              `you have exceeded your service provider limit of ${count} registered devices; please consider upgrading your plan`;
+            break;
+          case AlertType.SP_API_LIMIT:
+            // eslint-disable-next-line max-len
+            message = `you have exceeded your service provider api limit of ${count}; please consider upgrading your plan`;
             break;
           default:
             break;
@@ -595,6 +639,7 @@ module.exports = (logger, opts) => {
   const cdrClient = new Influx.InfluxDB({database: 'cdrs', schemas: schemas.cdr, ...opts});
   const alertClient = new Influx.InfluxDB({database: 'alerts', schemas: schemas.alerts, ...opts});
   const callCountClient = new Influx.InfluxDB({database: 'call_counts', schemas: schemas.call_counts, ...opts});
+  const callCountSPClient = new Influx.InfluxDB({database: 'sp_call_counts', schemas: schemas.sp_call_counts, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -606,6 +651,14 @@ module.exports = (logger, opts) => {
   };
   alertClient.locals = {
     db: 'alerts',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
+  callCountSPClient.locals = {
+    db: 'sp_call_counts',
     initialized: false,
     writing: false,
     commitSize: opts.commitSize || 1,
@@ -629,8 +682,9 @@ module.exports = (logger, opts) => {
 
   return {
     writeCallCount: writeCallCount.bind(null, callCountClient),
+    writeCallCountSP: writeCallCountSP.bind(null, callCountSPClient),
     queryCallCounts: queryCallCounts.bind(null, callCountClient),
-    queryCallCountsSP: queryCallCountsSP.bind(null, callCountClient),
+    queryCallCountsSP: queryCallCountsSP.bind(null, callCountSPClient),
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrsSP: queryCdrsSP.bind(null, cdrClient),
     queryCdrs: queryCdrs.bind(null, cdrClient),
