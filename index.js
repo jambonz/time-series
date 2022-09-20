@@ -25,6 +25,7 @@ const schemas = {
     measurement: 'cdrs',
     fields: {
       call_sid: Influx.FieldType.STRING,
+      application_sid: Influx.FieldType.STRING,
       from: Influx.FieldType.STRING,
       to: Influx.FieldType.STRING,
       sip_callid: Influx.FieldType.STRING,
@@ -450,6 +451,7 @@ const queryCdrs = async(client, opts) => {
 
   const sql = createCdrQuery(opts);
   const res = await client.queryRaw(sql, { placeholders: params});
+  //console.log(JSON.stringify(res.results[0]));
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {

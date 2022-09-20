@@ -33,7 +33,6 @@ test('write timeseries data', async(t) => {
     trunk: 'device',
     service_provider_sid: 'zzzzz',
     account_sid: 'xxxx',
-    call_sid: 'foo'
   },
   {
     from: 'me2',
@@ -51,12 +50,13 @@ test('write timeseries data', async(t) => {
     trunk: 'twilio',
     service_provider_sid: 'zzzzz',
     account_sid: 'yyyy',
-    call_sid: 'bar'
+    call_sid: 'bar',
+    application_sid: 'app-sid'
   }]);
   t.pass('wrote cdr');
 
   result = await queryCdrs({account_sid: 'xxxx', page: 1, page_size:25});
-  //npm tesconsole.log(JSON.stringify(result));
+  //console.log(JSON.stringify(result));
   t.ok(result.data.length === 1, 'queried cdrs by account sid')
 
   result = await queryCdrs({account_sid: 'yyyy', trunk: 'twilio', page: 1, page_size:25});
