@@ -82,6 +82,8 @@ const schemas = {
       calls_in_progress: Influx.FieldType.INTEGER,
     },
     tags: [
+      'service_provider_sid',
+      'account_sid',
       'application_sid'
     ]
   }

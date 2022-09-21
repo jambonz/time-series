@@ -208,11 +208,14 @@ test('write timeseries data', async(t) => {
   result = await writeCallCountApp(
     {
       calls_in_progress: 20,
+      service_provider_sid: 'zzzzz',
       application_sid: 'zzzzz'
     });
   result = await writeCallCountApp(
     {
       calls_in_progress: 21,
+      service_provider_sid: 'zzzzz',
+      account_sid: 'zzzzz',
       application_sid: 'zzzzz'
     });
   t.pass('wrote call counts for application');
