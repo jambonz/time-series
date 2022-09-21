@@ -5,8 +5,10 @@ const consoleLogger = {error: console.error, info: console.log, debug: console.l
 const {
   writeCallCount,
   writeCallCountSP,
+  writeCallCountApp,
   queryCallCounts,
   queryCallCountsSP,
+  queryCallCountsApp,
   writeCdrs,
   queryCdrs,
   queryCdrsSP,
@@ -203,6 +205,18 @@ test('write timeseries data', async(t) => {
     });
   t.pass('wrote call counts for service provider');
 
+  result = await writeCallCountApp(
+    {
+      calls_in_progress: 20,
+      application_sid: 'zzzzz'
+    });
+  result = await writeCallCountApp(
+    {
+      calls_in_progress: 21,
+      application_sid: 'zzzzz'
+    });
+  t.pass('wrote call counts for application');
+
   result = await queryCallCountsSP({service_provider_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
   t.ok(result.data.length === 2, 'queried call counts by service provider sid');
@@ -210,4 +224,9 @@ test('write timeseries data', async(t) => {
   result = await queryCallCounts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
   t.ok(result.data.length === 2, 'queried call counts by account_sid');
+
+  result = await queryCallCountsApp({application_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
+  //console.log(JSON.stringify(result));
+  t.ok(result.data.length === 2 && result.data[0].calls_in_progress === 21, 'queried call counts by application_sid');
+
 });

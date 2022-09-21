@@ -75,6 +75,15 @@ const schemas = {
     tags: [
       'service_provider_sid'
     ]
+  },
+  app_call_counts: {
+    measurement: 'app_call_counts',
+    fields: {
+      calls_in_progress: Influx.FieldType.INTEGER,
+    },
+    tags: [
+      'application_sid'
+    ]
   }
 };
 
@@ -94,6 +103,30 @@ const writeData = async(client) => {
     client.locals.data = [];
     throw err;
   }
+};
+
+/* for application */
+const createCallCountsQueryApp = ({page, page_size, days, start, end}) => {
+  let sql = 'SELECT * from app_call_counts WHERE application_sid = $application_sid ';
+  if (days) sql += 'AND time > $timestamp ';
+  else {
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
+  }
+  sql += ' ORDER BY time DESC';
+  if (page_size) sql += ' LIMIT $page_size';
+  if (page) sql += ' OFFSET $offset';
+  return sql;
+};
+
+const createCallCountsCountQueryApp = ({days, start, end}) => {
+  let sql = 'SELECT COUNT(calls_in_progress) from app_call_counts WHERE application_sid = $application_sid ';
+  if (days) sql += 'AND time > $timestamp ';
+  else {
+    if (start) sql += 'AND time >= $start ';
+    if (end) sql += 'AND time <= $end ';
+  }
+  return sql;
 };
 
 /* for Service Provider */
@@ -300,6 +333,58 @@ const writeCallCountSP = async(client, count) => {
     await writeData(client);
   }
   return;
+};
+
+const writeCallCountApp = async(client, count) => {
+  if (!client.locals.initialized) await initDatabase(client, 'app_call_counts');
+  const {application_sid, ...fields} = count;
+  const data = {
+    measurement: 'app_call_counts',
+    fields,
+    tags: {
+      application_sid
+    }
+  };
+  client.locals.data = [...client.locals.data, ...[data]];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+  return;
+};
+
+const queryCallCountsApp = async(client, opts) => {
+  if (!client.locals.initialized) await initDatabase(client, 'app_call_counts');
+  const response = {
+    total: 0,
+    page_size: opts.page_size,
+    page: opts.page,
+    data: []
+  };
+  const params = generateBindParameters(opts);
+  const sqlTotal = createCallCountsCountQueryApp(opts);
+  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
+  if (!obj.results || !obj.results[0].series) return response;
+  response.total = obj.results[0].series[0].values[0][1];
+
+  const sql = createCallCountsQueryApp(opts);
+  const res = await client.queryRaw(sql, { placeholders: params});
+  //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
+  if (res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    const data = values.map((v) => {
+      const obj = {};
+      v.forEach((val, idx) => {
+        v.forEach((val, idx) => {
+          const key = columns[idx];
+          obj[key] = val;
+        });
+      });
+      return obj;
+    });
+    response.data = data;
+  }
+  return response;
 };
 
 const queryCallCountsSP = async(client, opts) => {
@@ -642,6 +727,8 @@ module.exports = (logger, opts) => {
   const alertClient = new Influx.InfluxDB({database: 'alerts', schemas: schemas.alerts, ...opts});
   const callCountClient = new Influx.InfluxDB({database: 'call_counts', schemas: schemas.call_counts, ...opts});
   const callCountSPClient = new Influx.InfluxDB({database: 'sp_call_counts', schemas: schemas.sp_call_counts, ...opts});
+  // eslint-disable-next-line max-len
+  const callCountAppClient = new Influx.InfluxDB({database: 'app_call_counts', schemas: schemas.app_call_counts, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -653,6 +740,14 @@ module.exports = (logger, opts) => {
   };
   alertClient.locals = {
     db: 'alerts',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
+  callCountAppClient.locals = {
+    db: 'app_call_counts',
     initialized: false,
     writing: false,
     commitSize: opts.commitSize || 1,
@@ -678,14 +773,18 @@ module.exports = (logger, opts) => {
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
     setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
+    setInterval(writeData.bind(null, callCountSPClient), opts.commitInterval * 1000);
+    setInterval(writeData.bind(null, callCountAppClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
   }
 
   return {
     writeCallCount: writeCallCount.bind(null, callCountClient),
+    writeCallCountApp: writeCallCountApp.bind(null, callCountAppClient),
     writeCallCountSP: writeCallCountSP.bind(null, callCountSPClient),
     queryCallCounts: queryCallCounts.bind(null, callCountClient),
+    queryCallCountsApp: queryCallCountsApp.bind(null, callCountAppClient),
     queryCallCountsSP: queryCallCountsSP.bind(null, callCountSPClient),
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrsSP: queryCdrsSP.bind(null, cdrClient),
