@@ -339,11 +339,13 @@ const writeCallCountSP = async(client, count) => {
 
 const writeCallCountApp = async(client, count) => {
   if (!client.locals.initialized) await initDatabase(client, 'app_call_counts');
-  const {application_sid, ...fields} = count;
+  const {application_sid, service_provider_sid, account_sid, ...fields} = count;
   const data = {
     measurement: 'app_call_counts',
     fields,
     tags: {
+      service_provider_sid,
+      account_sid,
       application_sid
     }
   };
