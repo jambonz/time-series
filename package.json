@@ -11,7 +11,7 @@
   "author": "Dave Horton",
   "license": "MIT",
   "dependencies": {
-    "debug": "^4.3.1",
+    "debug": "^4.3.4",
     "influx": "^5.9.3"
   },
   "devDependencies": {
