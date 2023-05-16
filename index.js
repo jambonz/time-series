@@ -34,7 +34,9 @@ const schemas = {
       terminated_at: Influx.FieldType.INTEGER,
       termination_reason: Influx.FieldType.STRING,
       remote_host: Influx.FieldType.STRING,
-      trace_id: Influx.FieldType.STRING
+      trace_id: Influx.FieldType.STRING,
+      trace_id: Influx.FieldType.STRING,
+      recording_url: Influx.FieldType.STRING
     },
     tags: [
       'service_provider_sid',

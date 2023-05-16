@@ -35,6 +35,7 @@ test('write timeseries data', async(t) => {
     trunk: 'device',
     service_provider_sid: 'zzzzz',
     account_sid: 'xxxx',
+    recording_url: '/Accounts/12345/RecentCalls/54321/record'
   },
   {
     from: 'me2',
