@@ -60,13 +60,41 @@ test('write timeseries data', async(t) => {
 
   result = await queryCdrs({account_sid: 'xxxx', page: 1, page_size:25});
   //console.log(JSON.stringify(result));
-  t.ok(result.data.length === 1, 'queried cdrs by account sid')
+  t.ok(result.data.length === 1, 'queried cdrs by account sid');
+
+  result = await queryCdrs({account_sid: 'xxxx', from: 'a', page: 1, page_size:25});
+  t.ok(result.data.length === 0, 'queried cdrs by from');
+  result = await queryCdrs({account_sid: 'xxxx', from: 'm', page: 1, page_size:25});
+  t.ok(result.data.length === 1, 'queried cdrs by from');
+
+  result = await queryCdrs({account_sid: 'xxxx', to: 'a', page: 1, page_size:25});
+  t.ok(result.data.length === 0, 'queried cdrs by to');
+  result = await queryCdrs({account_sid: 'xxxx', to: 'y', page: 1, page_size:25});
+  t.ok(result.data.length === 1, 'queried cdrs by to');
 
   result = await queryCdrs({account_sid: 'yyyy', trunk: 'twilio', page: 1, page_size:25});
   t.ok(result.data.length === 1, 'queried cdrs by trunk')
 
   result = await queryCdrsSP({service_provider_sid: 'zzzzz', page: 1, page_size:25});
   t.ok(result.data.length === 2, 'queried cdrs by service provider sid')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', from: 'a', page: 1, page_size:25});
+  t.ok(result.data.length === 0, 'queried cdrs by service provider sid and from')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', from: 'me', page: 1, page_size:25});
+  t.ok(result.data.length === 2, 'queried cdrs by service provider sid and from')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', from: 'me2', page: 1, page_size:25});
+  t.ok(result.data.length === 1, 'queried cdrs by service provider sid and from')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', to: 'a', page: 1, page_size:25});
+  t.ok(result.data.length === 0, 'queried cdrs by service provider sid and to')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', to: 'you', page: 1, page_size:25});
+  t.ok(result.data.length === 2, 'queried cdrs by service provider sid and to')
+
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', to: 'you2', page: 1, page_size:25});
+  t.ok(result.data.length === 1, 'queried cdrs by service provider sid and ot')
 
   result = await writeAlerts([
     {
