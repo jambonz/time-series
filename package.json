@@ -1,6 +1,6 @@
 {
   "name": "@jambonz/time-series",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "write and query data to time series daetabase",
   "main": "index.js",
   "scripts": {
