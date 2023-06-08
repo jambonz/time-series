@@ -181,11 +181,13 @@ const createCallCountsCountQuery = ({days, start, end}) => {
 };
 
 /* for Service Provider */
-const createCdrQuerySP = ({page, page_size, trunk, direction, answered, days, start, end}) => {
+const createCdrQuerySP = ({page, page_size, trunk, direction, answered, from, to, days, start, end}) => {
   let sql = 'SELECT * from cdrs WHERE service_provider_sid = $service_provider_sid ';
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (from) sql += `AND "from" =~ /.*${from}.*/ `;
+  if (to) sql += `AND "to" =~ /.*${to}.*/ `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -196,11 +198,13 @@ const createCdrQuerySP = ({page, page_size, trunk, direction, answered, days, st
   if (page) sql += ' OFFSET $offset';
   return sql;
 };
-const createCdrCountQuerySP = ({trunk, direction, answered, days, start, end}) => {
+const createCdrCountQuerySP = ({trunk, direction, answered, from, to, days, start, end}) => {
   let sql = 'SELECT COUNT(sip_callid) from cdrs WHERE service_provider_sid = $service_provider_sid ';
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (from) sql += `AND "from" =~ /.*${from}.*/ `;
+  if (to) sql += `AND "to" =~ /.*${to}.*/ `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -210,11 +214,13 @@ const createCdrCountQuerySP = ({trunk, direction, answered, days, start, end}) =
 };
 
 /* for Account */
-const createCdrQuery = ({page, page_size, trunk, direction, answered, days, start, end}) => {
+const createCdrQuery = ({page, page_size, trunk, direction, answered, from, to, days, start, end}) => {
   let sql = 'SELECT * from cdrs WHERE account_sid = $account_sid ';
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (from) sql += `AND "from" =~ /.*${from}.*/ `;
+  if (to) sql += `AND "to" =~ /.*${to}.*/ `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -225,11 +231,13 @@ const createCdrQuery = ({page, page_size, trunk, direction, answered, days, star
   if (page) sql += ' OFFSET $offset';
   return sql;
 };
-const createCdrCountQuery = ({trunk, direction, answered, days, start, end}) => {
+const createCdrCountQuery = ({trunk, direction, answered, from, to, days, start, end}) => {
   let sql = 'SELECT COUNT(sip_callid) from cdrs WHERE account_sid = $account_sid ';
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
+  if (from) sql += `AND "from" =~ /.*${from}.*/ `;
+  if (to) sql += `AND "to" =~ /.*${to}.*/ `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
