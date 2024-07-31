@@ -644,7 +644,8 @@ const writeAlerts = async(client, alerts) => {
       }
       let fields =  { message };
       if (target_sid) fields = Object.assign(fields, {target_sid});
-      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid, vendor }};
+      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid,
+        ...(vendor && {vendor})}};
       if (timestamp) obj.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
       return obj;
