@@ -55,7 +55,8 @@ const schemas = {
     tags: [
       'service_provider_sid',
       'account_sid',
-      'alert_type'
+      'alert_type',
+      'vendor'
     ]
   },
   call_counts: {
@@ -643,7 +644,7 @@ const writeAlerts = async(client, alerts) => {
       }
       let fields =  { message };
       if (target_sid) fields = Object.assign(fields, {target_sid});
-      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid }};
+      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid, vendor }};
       if (timestamp) obj.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
       return obj;
