@@ -29,6 +29,7 @@ const schemas = {
       from: Influx.FieldType.STRING,
       to: Influx.FieldType.STRING,
       sip_callid: Influx.FieldType.STRING,
+      sip_parent_callid: Influx.FieldType.STRING,
       sip_status: Influx.FieldType.INTEGER,
       duration: Influx.FieldType.INTEGER,
       terminated_at: Influx.FieldType.INTEGER,
@@ -734,7 +735,7 @@ module.exports = (logger, opts) => {
   if (typeof opts === 'string') opts = {host: opts};
   assert(opts.host);
 
-  const cdrClient = new Influx.InfluxDB({database: 'cdrs', schemas: schemas.cdr, ...opts});
+  const cdrClient = new Influx.InfluxDB({database: 'cdrs', schemas: schemas.cdrs, ...opts});
   const alertClient = new Influx.InfluxDB({database: 'alerts', schemas: schemas.alerts, ...opts});
   const callCountClient = new Influx.InfluxDB({database: 'call_counts', schemas: schemas.call_counts, ...opts});
   const callCountSPClient = new Influx.InfluxDB({database: 'sp_call_counts', schemas: schemas.sp_call_counts, ...opts});
