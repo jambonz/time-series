@@ -23,6 +23,7 @@ test('write timeseries data', async(t) => {
     from: 'me',
     to: 'you',
     sip_callid: 'foo@127.0.0.1',
+    sip_parent_callid: 'foo2@127.0.0.1',
     answered: true,
     duration: 22,
     attempted_at: new Date(Date.now() - (3600 * 1000)),
@@ -41,6 +42,7 @@ test('write timeseries data', async(t) => {
     from: 'me2',
     to: 'you2',
     sip_callid: 'foo@127.0.0.1',
+    sip_parent_callid: 'foo2@127.0.0.1',
     answered: false,
     duration: 20,
     attempted_at: new Date(Date.now() - (7200 * 1000)),
@@ -61,6 +63,7 @@ test('write timeseries data', async(t) => {
   result = await queryCdrs({account_sid: 'xxxx', page: 1, page_size:25});
   //console.log(JSON.stringify(result));
   t.ok(result.data.length === 1, 'queried cdrs by account sid');
+  t.ok(result.data[0].sip_parent_callid === 'foo2@127.0.0.1', 'sip_parent_callid successfully added');
 
   result = await queryCdrs({account_sid: 'xxxx', filter: 'a', page: 1, page_size:25});
   t.ok(result.data.length === 0, 'queried cdrs by from');
