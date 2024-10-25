@@ -89,6 +89,17 @@ const schemas = {
       'account_sid',
       'application_sid'
     ]
+  },
+  system_alerts: {
+    measurement: 'system_alerts',
+    fields: {
+      detail: Influx.FieldType.STRING,
+      host: Influx.FieldType.STRING
+    },
+    tags: [
+      'system_component',
+      'state'
+    ]
   }
 };
 
@@ -495,6 +506,25 @@ const writeCdrs = async(client, cdrs) => {
   return;
 };
 
+const writeSystemAlerts = async(client, systemAlerts) => {
+  if (!client.locals.initialized) await initDatabase(client, 'system_alerts');
+  systemAlerts = (Array.isArray(systemAlerts) ? systemAlerts : [systemAlerts])
+    .map((systemAlert) => {
+      const {system_component, state, fields} = systemAlert;
+      return {
+        measurement: 'system_alerts',
+        timestamp: new Date(),
+        fields,
+        tags: {
+          system_component,
+          state
+        }
+      };
+    });
+  client.locals.data = [...client.locals.data, ...systemAlerts];
+  await writeData(client);
+  return;
+};
 const queryCdrsSP = async(client, opts) => {
   if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   const response = {
@@ -741,6 +771,7 @@ module.exports = (logger, opts) => {
   const callCountSPClient = new Influx.InfluxDB({database: 'sp_call_counts', schemas: schemas.sp_call_counts, ...opts});
   // eslint-disable-next-line max-len
   const callCountAppClient = new Influx.InfluxDB({database: 'app_call_counts', schemas: schemas.app_call_counts, ...opts});
+  const systemAlertClient = new Influx.InfluxDB({database: 'system_alerts', schemas: schemas.system_alerts, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -782,6 +813,14 @@ module.exports = (logger, opts) => {
     commitInterval: opts.commitInterval || 10,
     data: []
   };
+  systemAlertClient.locals = {
+    db: 'system_alerts',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
     setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
@@ -804,6 +843,7 @@ module.exports = (logger, opts) => {
     writeAlerts: writeAlerts.bind(null, alertClient),
     queryAlerts: queryAlerts.bind(null, alertClient),
     queryAlertsSP: queryAlertsSP.bind(null, alertClient),
+    writeSystemAlerts: writeSystemAlerts.bind(null, systemAlertClient),
     AlertType: { ...AlertType }
   };
 };
