@@ -93,12 +93,12 @@ const schemas = {
   system_alerts: {
     measurement: 'system_alerts',
     fields: {
-      status: Influx.FieldType.STRING,
       detail: Influx.FieldType.STRING,
       host: Influx.FieldType.STRING
     },
     tags: [
-      'system_category'
+      'system_component',
+      'state'
     ]
   }
 };
@@ -510,13 +510,14 @@ const writeSystemAlerts = async(client, systemAlerts) => {
   if (!client.locals.initialized) await initDatabase(client, 'system_alerts');
   systemAlerts = (Array.isArray(systemAlerts) ? systemAlerts : [systemAlerts])
     .map((systemAlert) => {
-      const {system_category, fields} = systemAlert;
+      const {system_component, state, fields} = systemAlert;
       return {
         measurement: 'system_alerts',
         timestamp: new Date(),
         fields,
         tags: {
-          system_category
+          system_component,
+          state
         }
       };
     });
