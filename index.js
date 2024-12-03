@@ -17,7 +17,8 @@ const AlertType = {
   SP_CALL_LIMIT: 'service-provider-call-limit',
   SP_DEVICE_LIMIT: 'service-provider-device-limit',
   SP_API_LIMIT: 'service-provider-api-limit',
-  ACCOUNT_INACTIVE: 'account is inactive or suspended'
+  ACCOUNT_INACTIVE: 'account is inactive or suspended',
+  PLAY_FILENOTFOUND: 'play-url-notfound'
 };
 
 const schemas = {
@@ -668,6 +669,9 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.SP_API_LIMIT:
             // eslint-disable-next-line max-len
             message = `you have exceeded your service provider api limit of ${count}; please consider upgrading your plan`;
+            break;
+          case AlertType.PLAY_FILENOTFOUND:
+            message = `The file at ${url} was not found`;
             break;
           default:
             break;
