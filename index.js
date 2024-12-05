@@ -18,7 +18,8 @@ const AlertType = {
   SP_DEVICE_LIMIT: 'service-provider-device-limit',
   SP_API_LIMIT: 'service-provider-api-limit',
   ACCOUNT_INACTIVE: 'account is inactive or suspended',
-  PLAY_FILENOTFOUND: 'play-url-notfound'
+  PLAY_FILENOTFOUND: 'play-url-notfound',
+  TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure'
 };
 
 const schemas = {
@@ -672,6 +673,9 @@ const writeAlerts = async(client, alerts) => {
             break;
           case AlertType.PLAY_FILENOTFOUND:
             message = `The file at ${url} was not found`;
+            break;
+          case AlertType.TTS_STREAMING_CONNECTION_FAILURE:
+            message = `Failed to connect to tts streaming service at ${vendor}`;
             break;
           default:
             break;
