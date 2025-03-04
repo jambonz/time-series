@@ -101,6 +101,9 @@ test('write timeseries data', async(t) => {
   result = await queryCdrsSP({service_provider_sid: 'zzzzz', filter: 'you2', page: 1, page_size:25});
   t.ok(result.data.length === 1, 'queried cdrs by service provider sid and ot')
 
+  result = await queryCdrsSP({service_provider_sid: 'zzzzz', filter: 'foo@127.0.0.1', page: 1, page_size:25});
+  t.ok(result.data.length === 2, 'queried cdrs by service provider sid and sip_callid')
+
   result = await writeAlerts([
     {
       alert_type: AlertType.WEBHOOK_STATUS_FAILURE,

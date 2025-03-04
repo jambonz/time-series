@@ -201,7 +201,8 @@ const createCdrQuerySP = ({page, page_size, trunk, direction, answered, filter, 
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
-  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR call_sid = $filter) `;
+  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR
+    call_sid = $filter OR sip_callid = $filter) `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -217,7 +218,8 @@ const createCdrCountQuerySP = ({trunk, direction, answered, filter, days, start,
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
-  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR call_sid = $filter) `;
+  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR
+    call_sid = $filter OR sip_callid = $filter)`;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -232,7 +234,8 @@ const createCdrQuery = ({page, page_size, trunk, direction, answered, filter, da
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
-  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR call_sid = $filter) `;
+  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR
+    call_sid = $filter OR sip_callid = $filter) `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
@@ -248,7 +251,8 @@ const createCdrCountQuery = ({trunk, direction, answered, filter, days, start, e
   if (trunk) sql += 'AND trunk = $trunk ';
   if (direction) sql += 'AND direction = $direction ';
   if (['true', 'false'].includes(answered)) sql += 'AND answered = $answered ';
-  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR call_sid = $filter) `;
+  if (filter) sql += `AND ("from" =~ /.*${filter}.*/ OR "to" =~ /.*${filter}.*/ OR
+    call_sid = $filter OR sip_callid = $filter) `;
   if (days) sql += 'AND time > $timestamp ';
   else {
     if (start) sql += 'AND time >= $start ';
