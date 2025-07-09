@@ -19,7 +19,8 @@ const AlertType = {
   SP_API_LIMIT: 'service-provider-api-limit',
   ACCOUNT_INACTIVE: 'account is inactive or suspended',
   PLAY_FILENOTFOUND: 'play-url-notfound',
-  TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure'
+  TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure',
+  APPLICATION: 'alert-from-application'
 };
 
 const schemas = {
