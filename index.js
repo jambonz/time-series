@@ -611,6 +611,7 @@ const writeAlerts = async(client, alerts) => {
         url,
         status,
         vendor,
+        label,
         count,
         detail,
         timestamp
@@ -634,16 +635,18 @@ const writeAlerts = async(client, alerts) => {
             message = `${url} return invalid app payload`;
             break;
           case AlertType.TTS_NOT_PROVISIONED:
-            message = `text to speech credentials for ${vendor} have not been provisioned`;
+            message = `text to speech credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
             break;
           case AlertType.STT_NOT_PROVISIONED:
-            message = `speech to text credentials for ${vendor} have not been provisioned`;
+            message = `speech to text credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
             break;
           case AlertType.TTS_FAILURE:
-            message = `text to speech request to ${vendor} failed; please check your speech credentials`;
+            // eslint-disable-next-line max-len
+            message = `text to speech request to ${vendor} (label: ${label || 'none'}) failed; please check your speech credentials`;
             break;
           case AlertType.STT_FAILURE:
-            message = `speech to text request to ${vendor} failed; please check your speech credentials`;
+            // eslint-disable-next-line max-len
+            message = `speech to text request to ${vendor} (label: ${label || 'none'}) failed; please check your speech credentials`;
             break;
           case AlertType.CARRIER_NOT_PROVISIONED:
             message = 'outbound call failure: no carriers have been provisioned';
