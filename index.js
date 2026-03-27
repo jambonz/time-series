@@ -261,7 +261,7 @@ const createCdrCountQuery = ({trunk, direction, answered, filter, days, start, e
 /* for Service Provider */
 const createAlertsQuerySP = ({target_sid, alert_type, page, page_size, days, start, end}) => {
   // eslint-disable-next-line max-len
-  let sql = 'SELECT service_provider_sid, message, detail FROM alerts WHERE service_provider_sid = $service_provider_sid ';
+  let sql = 'SELECT * FROM alerts WHERE service_provider_sid = $service_provider_sid ';
   if (target_sid) sql += 'AND target_sid = $target_sid ';
   if (alert_type) sql += 'AND alert_type = $alert_type ';
   if (days) sql += 'AND time > $timestamp ';
