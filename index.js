@@ -103,6 +103,17 @@ const schemas = {
       'system_component',
       'state'
     ]
+  },
+  krisp_usage: {
+    measurement: 'krisp_usage',
+    fields: {
+      usage_seconds: Influx.FieldType.INTEGER
+    },
+    tags: [
+      'service_provider_sid',
+      'account_sid',
+      'feature'
+    ]
   }
 };
 
@@ -528,6 +539,26 @@ const writeSystemAlerts = async(client, systemAlerts) => {
   await writeData(client);
   return;
 };
+
+const writeKrispUsage = async(client, usage) => {
+  if (!client.locals.initialized) await initDatabase(client, 'krisp_usage');
+  const {service_provider_sid, account_sid, feature, ...fields} = usage;
+  const data = {
+    measurement: 'krisp_usage',
+    timestamp: new Date(),
+    fields,
+    tags: {
+      service_provider_sid,
+      account_sid,
+      feature
+    }
+  };
+  client.locals.data = [...client.locals.data, ...[data]];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+};
+
 const queryCdrsSP = async(client, opts) => {
   if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   const response = {
@@ -784,6 +815,8 @@ module.exports = (logger, opts) => {
   // eslint-disable-next-line max-len
   const callCountAppClient = new Influx.InfluxDB({database: 'app_call_counts', schemas: schemas.app_call_counts, ...opts});
   const systemAlertClient = new Influx.InfluxDB({database: 'system_alerts', schemas: schemas.system_alerts, ...opts});
+  // eslint-disable-next-line max-len
+  const krispUsageClient = new Influx.InfluxDB({database: 'krisp_usage', schemas: schemas.krisp_usage, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -833,6 +866,14 @@ module.exports = (logger, opts) => {
     commitInterval: opts.commitInterval || 10,
     data: []
   };
+  krispUsageClient.locals = {
+    db: 'krisp_usage',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
     setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
@@ -840,6 +881,7 @@ module.exports = (logger, opts) => {
     setInterval(writeData.bind(null, callCountAppClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
+    setInterval(writeData.bind(null, krispUsageClient), opts.commitInterval * 1000);
   }
 
   return {
@@ -856,6 +898,7 @@ module.exports = (logger, opts) => {
     queryAlerts: queryAlerts.bind(null, alertClient),
     queryAlertsSP: queryAlertsSP.bind(null, alertClient),
     writeSystemAlerts: writeSystemAlerts.bind(null, systemAlertClient),
+    writeKrispUsage: writeKrispUsage.bind(null, krispUsageClient),
     AlertType: { ...AlertType }
   };
 };
