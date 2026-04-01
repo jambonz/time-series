@@ -15,6 +15,7 @@ const {
   writeAlerts,
   queryAlerts,
   queryAlertsSP,
+  writeKrispUsage,
   AlertType
 } = require('..')(consoleLogger, '127.0.0.1', {commitSize: 1});
 
@@ -265,5 +266,21 @@ test('write timeseries data', async(t) => {
   result = await queryCallCountsApp({application_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
   t.ok(result.data.length === 2 && result.data[0].calls_in_progress === 21, 'queried call counts by application_sid');
+
+  result = await writeKrispUsage({
+    service_provider_sid: 'zzzzz',
+    account_sid: 'yyyy',
+    feature: 'noise_cancellation',
+    usage_seconds: 120
+  });
+  t.pass('wrote krisp usage for noise cancellation');
+
+  result = await writeKrispUsage({
+    service_provider_sid: 'zzzzz',
+    account_sid: 'yyyy',
+    feature: 'turn_taking',
+    usage_seconds: 45
+  });
+  t.pass('wrote krisp usage for turn taking');
 
 });
