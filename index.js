@@ -667,28 +667,40 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.INVALID_APP_PAYLOAD:
             message = `${url} return invalid app payload`;
             break;
-          case AlertType.TTS_NOT_PROVISIONED:
-            message = `text to speech credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
+          case AlertType.TTS_NOT_PROVISIONED: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `text to speech credentials for ${v} have not been provisioned`;
             break;
-          case AlertType.STT_NOT_PROVISIONED:
-            message = `speech to text credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
+          }
+          case AlertType.STT_NOT_PROVISIONED: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `speech to text credentials for ${v} have not been provisioned`;
             break;
-          case AlertType.TTS_FAILURE:
-            // eslint-disable-next-line max-len
-            message = `text to speech request to ${vendor} (label: ${label || 'none'}) failed; please check your speech credentials`;
+          }
+          case AlertType.TTS_FAILURE: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `text to speech request to ${v} failed${detail ? `: ${detail}` : ''}`;
             break;
-          case AlertType.STT_FAILURE:
-            // eslint-disable-next-line max-len
-            message = `speech to text request to ${vendor} (label: ${label || 'none'}) failed; please check your speech credentials`;
+          }
+          case AlertType.STT_FAILURE: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `speech to text request to ${v} failed${detail ? `: ${detail}` : ''}`;
             break;
-          case AlertType.LLM_NOT_PROVISIONED:
-            // eslint-disable-next-line max-len
-            message = `large language model credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
+          }
+          case AlertType.LLM_NOT_PROVISIONED: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `large language model credentials for ${v} have not been provisioned`;
             break;
-          case AlertType.LLM_FAILURE:
-            // eslint-disable-next-line max-len
-            message = `large language model request to ${vendor} (label: ${label || 'none'}) failed; please check your LLM credentials`;
+          }
+          case AlertType.LLM_FAILURE: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            // Include the vendor's own error text (passed via `detail`) rather
+            // than the misleading "check your credentials" phrasing — most
+            // LLM failures are not credential issues (model not in region,
+            // rate limit, transient vendor 500, etc.).
+            message = `large language model request to ${v} failed${detail ? `: ${detail}` : ''}`;
             break;
+          }
           case AlertType.CARRIER_NOT_PROVISIONED:
             message = 'outbound call failure: no carriers have been provisioned';
             break;
