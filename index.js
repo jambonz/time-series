@@ -8,8 +8,10 @@ const AlertType = {
   INVALID_APP_PAYLOAD: 'invalid-app-payload',
   TTS_NOT_PROVISIONED: 'no-tts',
   STT_NOT_PROVISIONED: 'no-stt',
+  LLM_NOT_PROVISIONED: 'no-llm',
   TTS_FAILURE: 'tts-failure',
   STT_FAILURE: 'stt-failure',
+  LLM_FAILURE: 'llm-failure',
   CARRIER_NOT_PROVISIONED: 'no-carrier',
   ACCOUNT_CALL_LIMIT: 'account-call-limit',
   ACCOUNT_DEVICE_LIMIT: 'account-device-limit',
@@ -678,6 +680,14 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.STT_FAILURE:
             // eslint-disable-next-line max-len
             message = `speech to text request to ${vendor} (label: ${label || 'none'}) failed; please check your speech credentials`;
+            break;
+          case AlertType.LLM_NOT_PROVISIONED:
+            // eslint-disable-next-line max-len
+            message = `large language model credentials for ${vendor} (label: ${label || 'none'}) have not been provisioned`;
+            break;
+          case AlertType.LLM_FAILURE:
+            // eslint-disable-next-line max-len
+            message = `large language model request to ${vendor} (label: ${label || 'none'}) failed; please check your LLM credentials`;
             break;
           case AlertType.CARRIER_NOT_PROVISIONED:
             message = 'outbound call failure: no carriers have been provisioned';
