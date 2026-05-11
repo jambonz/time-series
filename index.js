@@ -22,6 +22,7 @@ const AlertType = {
   ACCOUNT_INACTIVE: 'account is inactive or suspended',
   PLAY_FILENOTFOUND: 'play-url-notfound',
   TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure',
+  KRISP_NOT_PROVISIONED: 'no-krisp',
   APPLICATION: 'alert-from-application'
 };
 
