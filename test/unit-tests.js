@@ -284,3 +284,52 @@ test('write timeseries data', async(t) => {
   t.pass('wrote krisp usage for turn taking');
 
 });
+
+test('cdrs with identical attempted_at are distinguished by random nanosecond offset', async(t) => {
+  const account_sid = 'dup-ts-acct';
+  const sharedTimestamp = new Date(Date.now() - (3600 * 1000));
+
+  await writeCdrs([
+    {
+      from: 'caller-A',
+      to: 'callee-A',
+      sip_callid: 'call-A@127.0.0.1',
+      call_sid: 'call-sid-A',
+      answered: true,
+      duration: 10,
+      attempted_at: sharedTimestamp,
+      answered_at: Date.now(),
+      terminated_at: Date.now(),
+      termination_reason: 'caller hungup',
+      direction: 'inbound',
+      host: '10.10.100.1',
+      remote_host: '10.10.100.8',
+      trunk: 'device',
+      service_provider_sid: 'dup-ts-sp',
+      account_sid
+    },
+    {
+      from: 'caller-B',
+      to: 'callee-B',
+      sip_callid: 'call-B@127.0.0.1',
+      call_sid: 'call-sid-B',
+      answered: true,
+      duration: 20,
+      attempted_at: sharedTimestamp,
+      answered_at: Date.now(),
+      terminated_at: Date.now(),
+      termination_reason: 'caller hungup',
+      direction: 'inbound',
+      host: '10.10.100.1',
+      remote_host: '10.10.100.8',
+      trunk: 'device',
+      service_provider_sid: 'dup-ts-sp',
+      account_sid
+    }
+  ]);
+  t.pass('wrote two cdrs sharing attempted_at and tag set');
+
+  const result = await queryCdrs({account_sid, page: 1, page_size: 25});
+  t.equal(result.data.length, 2,
+    'both cdrs should be retrievable — random nanosecond offsets prevent collision');
+});
