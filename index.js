@@ -1,5 +1,6 @@
 const assert = require('assert');
 const Influx = require('influx');
+const {toNanoDate} = Influx;
 const AlertType = {
   WEBHOOK_STATUS_FAILURE: 'webhook-failure',
   WEBHOOK_CONNECTION_FAILURE: 'webhook-connection-failure',
@@ -501,9 +502,12 @@ const writeCdrs = async(client, cdrs) => {
   cdrs = (Array.isArray(cdrs) ? cdrs : [cdrs])
     .map((cdr) => {
       const {direction, host, trunk, service_provider_sid, account_sid, answered, attempted_at, ...fields} = cdr;
+      const msEpoch = new Date(attempted_at).getTime();
+      const randomNanos = Math.floor(Math.random() * 1000000);
+      const nanoTimestamp = `${msEpoch}${String(randomNanos).padStart(6, '0')}`;
       return {
         measurement: 'cdrs',
-        timestamp: new Date(attempted_at),
+        timestamp: toNanoDate(nanoTimestamp),
         fields,
         tags: {
           direction,

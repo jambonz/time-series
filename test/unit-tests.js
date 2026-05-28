@@ -285,10 +285,7 @@ test('write timeseries data', async(t) => {
 
 });
 
-test('cdrs with identical timestamp collide in influxdb', async(t) => {
-  // InfluxDB uniquely identifies a point by (measurement, tag set, timestamp).
-  // When two CDRs share all three, the second silently overwrites the first
-  // and one CDR is lost. This test demonstrates that bug.
+test('cdrs with identical attempted_at are distinguished by random nanosecond offset', async(t) => {
   const account_sid = 'dup-ts-acct';
   const sharedTimestamp = new Date(Date.now() - (3600 * 1000));
 
@@ -334,6 +331,5 @@ test('cdrs with identical timestamp collide in influxdb', async(t) => {
 
   const result = await queryCdrs({account_sid, page: 1, page_size: 25});
   t.equal(result.data.length, 2,
-    'both cdrs should be retrievable, but one is lost because InfluxDB ' +
-    'overwrites points with identical (measurement, tag set, timestamp)');
+    'both cdrs should be retrievable — random nanosecond offsets prevent collision');
 });
