@@ -566,6 +566,19 @@ const writeKrispUsage = async(client, usage) => {
   }
 };
 
+const mapCdrRow = (columns, v) => {
+  const obj = {};
+  v.forEach((val, idx) => {
+    const key = 'time' === columns[idx] ? 'attempted_at' : columns[idx];
+    let retvalue = val;
+    if (key === 'attempted_at') retvalue = new Date(Math.floor(new Date(val).getTime())).toISOString();
+    if (['answered_at', 'terminated_at'].includes(key)) retvalue = new Date(val);
+    if (key === 'answered') retvalue = 'true' === val ? true : false;
+    obj[key] = retvalue;
+  });
+  return obj;
+};
+
 const queryCdrsSP = async(client, opts) => {
   if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   const response = {
@@ -585,18 +598,7 @@ const queryCdrsSP = async(client, opts) => {
   const res = await client.queryRaw(sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
-    const data = values.map((v) => {
-      const obj = {};
-      v.forEach((val, idx) => {
-        const key = 'time' === columns[idx] ? 'attempted_at' : columns[idx];
-        let retvalue = val;
-        if (['answered_at', 'terminated_at'].includes(key)) retvalue = new Date(val);
-        if (key === 'answered') retvalue = 'true' === val ? true : false;
-        obj[key] = retvalue;
-      });
-      return obj;
-    });
-    response.data = data;
+    response.data = values.map((v) => mapCdrRow(columns, v));
   }
   return response;
 };
@@ -621,18 +623,7 @@ const queryCdrs = async(client, opts) => {
   //console.log(JSON.stringify(res.results[0]));
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
-    const data = values.map((v) => {
-      const obj = {};
-      v.forEach((val, idx) => {
-        const key = 'time' === columns[idx] ? 'attempted_at' : columns[idx];
-        let retvalue = val;
-        if (['answered_at', 'terminated_at'].includes(key)) retvalue = new Date(val);
-        if (key === 'answered') retvalue = 'true' === val ? true : false;
-        obj[key] = retvalue;
-      });
-      return obj;
-    });
-    response.data = data;
+    response.data = values.map((v) => mapCdrRow(columns, v));
   }
   return response;
 };
