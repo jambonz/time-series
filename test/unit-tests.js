@@ -214,6 +214,41 @@ test('write timeseries data', async(t) => {
   //console.log(result);
   t.ok(result.data.length === 15, 'queried alerts by service_provider_sid');
 
+  /* regression: an alert with no resolvable message must not poison the write.
+   * Previously `message: undefined` serialized to the bare token `undefined`
+   * in line protocol and InfluxDB rejected the whole batch ("invalid boolean").
+   * Distinct account_sids (a tag) so each is its own series and a shared
+   * service_provider_sid that doesn't collide with the counts above. */
+  await writeAlerts([
+    {
+      // ERROR_UPDATING_CALL with an undefined message + detail (the prod shape)
+      alert_type: AlertType.ERROR_UPDATING_CALL,
+      service_provider_sid: 'sp-guard',
+      account_sid: 'acct-guard-1',
+      message: undefined,
+      detail: 'cannot read property foo of undefined',
+      target_sid: 'call-guard'
+    },
+    {
+      // ERROR_UPDATING_CALL with neither message nor detail (bare default)
+      alert_type: AlertType.ERROR_UPDATING_CALL,
+      service_provider_sid: 'sp-guard',
+      account_sid: 'acct-guard-2'
+    },
+    {
+      // an unknown alert_type with no message must still produce a valid write
+      alert_type: 'some-unknown-alert-type',
+      service_provider_sid: 'sp-guard',
+      account_sid: 'acct-guard-3'
+    }
+  ]);
+  t.pass('wrote alerts with undefined/missing message without poisoning the batch');
+
+  result = await queryAlertsSP({service_provider_sid: 'sp-guard', page: 1, page_size: 25, days: 7});
+  t.ok(result.data.length === 3, 'all three guard alerts were stored (write was not rejected)');
+  t.ok(result.data.every((a) => typeof a.message === 'string' && a.message.length > 0),
+    'every stored alert has a non-empty string message');
+
   result = await writeCallCount(
     {
       calls_in_progress: 49,
