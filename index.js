@@ -23,7 +23,8 @@ const AlertType = {
   PLAY_FILENOTFOUND: 'play-url-notfound',
   TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure',
   KRISP_NOT_PROVISIONED: 'no-krisp',
-  APPLICATION: 'alert-from-application'
+  APPLICATION: 'alert-from-application',
+  ERROR_UPDATING_CALL: 'error-updating-call'
 };
 
 const schemas = {
@@ -735,11 +736,19 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.TTS_STREAMING_CONNECTION_FAILURE:
             message = `Failed to connect to tts streaming service at ${vendor}`;
             break;
+          case AlertType.ERROR_UPDATING_CALL:
+            message = `error updating call${detail ? `: ${detail}` : ''}`;
+            break;
           default:
             break;
         }
       }
-      let fields =  { message };
+      /* Never write an undefined/empty (or non-string) message field. In line
+       * protocol an undefined value serializes to the bare token `undefined`,
+       * which InfluxDB rejects ("invalid boolean") and fails the entire batch
+       * write — taking down every alert in the same flush. */
+      if (!message) message = alert_type || 'unknown alert';
+      let fields =  { message: String(message) };
       if (target_sid) fields = Object.assign(fields, {target_sid});
       const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid,
         ...(vendor && {vendor})}};
