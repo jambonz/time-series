@@ -30,6 +30,12 @@ const AlertType = {
   WALLET_RECHARGE_FAILED: 'wallet-recharge-failed'
 };
 
+/* the reserved name of the jambonz-managed (prepaid) carrier; cdrs on this
+ * trunk are dual-written to cdrs_by_end so the rating engine can sweep by
+ * call END time (the cdr's own timestamp is the ATTEMPT time, so a long
+ * call's cdr lands in the past and a trailing-window sweep would miss it) */
+const MANAGED_TRUNK = 'jambonz';
+
 const schemas = {
   cdrs: {
     measurement: 'cdrs',
@@ -46,7 +52,11 @@ const schemas = {
       termination_reason: Influx.FieldType.STRING,
       remote_host: Influx.FieldType.STRING,
       trace_id: Influx.FieldType.STRING,
-      recording_url: Influx.FieldType.STRING
+      recording_url: Influx.FieldType.STRING,
+      /* written back by the rating engine (managed-carrier calls only) */
+      cost: Influx.FieldType.FLOAT,
+      rate: Influx.FieldType.FLOAT,
+      billed_seconds: Influx.FieldType.INTEGER
     },
     tags: [
       'service_provider_sid',
@@ -55,6 +65,56 @@ const schemas = {
       'trunk',
       'direction',
       'answered'
+    ]
+  },
+  cdrs_by_end: {
+    measurement: 'cdrs_by_end',
+    fields: {
+      call_sid: Influx.FieldType.STRING,
+      application_sid: Influx.FieldType.STRING,
+      from: Influx.FieldType.STRING,
+      to: Influx.FieldType.STRING,
+      sip_callid: Influx.FieldType.STRING,
+      sip_status: Influx.FieldType.INTEGER,
+      duration: Influx.FieldType.INTEGER,
+      attempted_at: Influx.FieldType.INTEGER,
+      terminated_at: Influx.FieldType.INTEGER,
+      remote_host: Influx.FieldType.STRING,
+      cost: Influx.FieldType.FLOAT,
+      rate: Influx.FieldType.FLOAT,
+      billed_seconds: Influx.FieldType.INTEGER
+    },
+    tags: [
+      'service_provider_sid',
+      'account_sid',
+      'host',
+      'trunk',
+      'direction',
+      'answered'
+    ]
+  },
+  /* internal profitability data: never exposed through customer-facing apis */
+  call_margin: {
+    measurement: 'call_margin',
+    fields: {
+      call_sid: Influx.FieldType.STRING,
+      duration: Influx.FieldType.INTEGER,
+      billed_seconds: Influx.FieldType.INTEGER,
+      supplier_billed_seconds: Influx.FieldType.INTEGER,
+      sell_rate: Influx.FieldType.FLOAT,
+      buy_rate: Influx.FieldType.FLOAT,
+      revenue: Influx.FieldType.FLOAT,
+      cogs: Influx.FieldType.FLOAT,
+      profit: Influx.FieldType.FLOAT
+    },
+    tags: [
+      'service',
+      'supplier',
+      'service_provider_sid',
+      'account_sid',
+      'trunk',
+      'direction',
+      'category'
     ]
   },
   alerts: {
@@ -502,29 +562,166 @@ const queryCallCounts = async(client, opts) => {
 
 const writeCdrs = async(client, cdrs) => {
   if (!client.locals.initialized) await initDatabase(client, 'cdrs');
-  cdrs = (Array.isArray(cdrs) ? cdrs : [cdrs])
-    .map((cdr) => {
+  const points = [];
+  (Array.isArray(cdrs) ? cdrs : [cdrs])
+    .forEach((cdr) => {
       const {direction, host, trunk, service_provider_sid, account_sid, answered, attempted_at, ...fields} = cdr;
-      return {
-        measurement: 'cdrs',
-        timestamp: new Date(attempted_at),
-        fields,
-        tags: {
-          direction,
-          host,
-          trunk,
-          service_provider_sid,
-          account_sid,
-          answered
-        }
+      const tags = {
+        direction,
+        host,
+        trunk,
+        service_provider_sid,
+        account_sid,
+        answered
       };
+      points.push({
+        measurement: 'cdrs',
+        timestamp: nsTimestamp(attempted_at, fields.call_sid),
+        fields,
+        tags
+      });
+      /* managed-carrier cdrs are also indexed by call END time for the
+       * near-real-time rating sweep */
+      if (MANAGED_TRUNK === trunk && fields.terminated_at) {
+        points.push({
+          measurement: 'cdrs_by_end',
+          timestamp: nsTimestamp(fields.terminated_at, fields.call_sid),
+          fields: {...fields, attempted_at: new Date(attempted_at).getTime()},
+          tags
+        });
+      }
     });
-  //console.log(`writing cdrs: ${JSON.stringify(cdrs)}`);
-  client.locals.data = [...client.locals.data, ...cdrs];
+  //console.log(`writing cdrs: ${JSON.stringify(points)}`);
+  client.locals.data = [...client.locals.data, ...points];
   if (client.locals.data.length >= client.locals.commitSize) {
     await writeData(client);
   }
   return;
+};
+
+/* ---- rating engine support ----
+ * The rating daemon sweeps cdrs_by_end (indexed by call END time), prices
+ * each call, and writes the results back: customer-facing cost fields merge
+ * onto the original cdrs/cdrs_by_end points (same series + timestamp), and
+ * internal profitability lands in call_margin.  All timestamps are handled
+ * at millisecond precision, which round-trips exactly because every point
+ * is written from a Date. */
+
+const CDR_TAGS = ['service_provider_sid', 'account_sid', 'host', 'trunk', 'direction', 'answered'];
+
+/* Two calls with identical tag sets ending (or starting) in the same
+ * millisecond would collide onto one influx point (same series + timestamp,
+ * last write wins) — silently losing a billable cdr.  Spread each call into
+ * the unused sub-millisecond nanosecond space with a deterministic hash of
+ * its call_sid: unique enough to avoid collisions, reproducible so the
+ * rating write-back merges onto the same point. */
+const subMsOffset = (call_sid) => {
+  let h = 2166136261;
+  const str = String(call_sid || '');
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 1000000;
+};
+const nsTimestamp = (ms, call_sid) =>
+  `${Math.trunc(new Date(ms).getTime())}${String(subMsOffset(call_sid)).padStart(6, '0')}`;
+
+/** managed-carrier calls that ENDED in (start, end]; rows carry end_time,
+ *  attempted_at (ms) and the full tag set needed for write-back.  Rows that
+ *  already carry a cost field have been rated. */
+const queryRatingCandidates = async(client, {trunk, start, end, limit = 5000, offset = 0}) => {
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
+  /* bare integer time literals are NANOSECONDS in influxql; suffix our
+   * millisecond bounds explicitly */
+  const startMs = Math.trunc(new Date(start).getTime());
+  const endMs = Math.trunc(new Date(end).getTime());
+  const sql = `SELECT * FROM cdrs_by_end WHERE trunk = $trunk
+    AND time > ${startMs}ms AND time <= ${endMs}ms ORDER BY time ASC LIMIT $limit OFFSET $offset`;
+  const res = await client.queryRaw(sql, {
+    placeholders: {trunk, limit, offset},
+    precision: 'ms',
+  });
+  if (!res.results || !res.results[0].series) return [];
+  const {columns, values} = res.results[0].series[0];
+  return values.map((v) => {
+    const obj = {};
+    v.forEach((val, idx) => {
+      obj['time' === columns[idx] ? 'end_time' : columns[idx]] = val;
+    });
+    return obj;
+  });
+};
+
+/** merge rated fields onto the original cdr point and its by-end twin */
+const writeRatedCdrs = async(client, rows) => {
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
+  const points = [];
+  for (const row of rows) {
+    const fields = {cost: row.cost, rate: row.rate, billed_seconds: row.billed_seconds};
+    const tags = {};
+    for (const t of CDR_TAGS) tags[t] = row.tags[t];
+    points.push({measurement: 'cdrs',
+      timestamp: nsTimestamp(row.attempted_at, row.call_sid), fields, tags});
+    points.push({measurement: 'cdrs_by_end',
+      timestamp: nsTimestamp(row.end_time, row.call_sid), fields, tags});
+  }
+  client.locals.data = [...client.locals.data, ...points];
+  await writeData(client);
+};
+
+/** internal profitability points; never surfaced through customer apis */
+const writeCallMargin = async(client, rows) => {
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
+  const points = rows.map((row) => ({
+    measurement: 'call_margin',
+    timestamp: nsTimestamp(row.attempted_at, row.call_sid),
+    fields: {
+      call_sid: row.call_sid,
+      duration: row.duration,
+      billed_seconds: row.billed_seconds,
+      supplier_billed_seconds: row.supplier_billed_seconds,
+      sell_rate: row.sell_rate,
+      buy_rate: row.buy_rate,
+      revenue: row.revenue,
+      cogs: row.cogs,
+      profit: row.profit,
+    },
+    tags: {
+      service: row.service || 'voice',
+      supplier: row.supplier,
+      service_provider_sid: row.service_provider_sid,
+      account_sid: row.account_sid,
+      trunk: row.trunk,
+      direction: row.direction,
+      category: row.category,
+    },
+  }));
+  client.locals.data = [...client.locals.data, ...points];
+  await writeData(client);
+};
+
+/** per-account usage totals for the nightly ledger posting, attributed by
+ *  call END time so every rated call lands in exactly one posting day */
+const queryDailyUsageTotals = async(client, {trunk, start, end}) => {
+  if (!client.locals.initialized) await initDatabase(client, 'cdrs');
+  const startMs = Math.trunc(new Date(start).getTime());
+  const endMs = Math.trunc(new Date(end).getTime());
+  const sql = `SELECT SUM(cost) AS total_cost, SUM(billed_seconds) AS total_billed_seconds,
+    COUNT(cost) AS calls FROM cdrs_by_end WHERE trunk = $trunk
+    AND time > ${startMs}ms AND time <= ${endMs}ms GROUP BY account_sid`;
+  const res = await client.queryRaw(sql, {
+    placeholders: {trunk},
+    precision: 'ms',
+  });
+  if (!res.results || !res.results[0].series) return [];
+  return res.results[0].series.map((s) => {
+    const obj = {account_sid: s.tags.account_sid};
+    s.values[0].forEach((val, idx) => {
+      if ('time' !== s.columns[idx]) obj[s.columns[idx]] = val;
+    });
+    return obj;
+  });
 };
 
 const writeSystemAlerts = async(client, systemAlerts) => {
@@ -946,6 +1143,10 @@ module.exports = (logger, opts) => {
     writeCdrs: writeCdrs.bind(null, cdrClient),
     queryCdrsSP: queryCdrsSP.bind(null, cdrClient),
     queryCdrs: queryCdrs.bind(null, cdrClient),
+    queryRatingCandidates: queryRatingCandidates.bind(null, cdrClient),
+    writeRatedCdrs: writeRatedCdrs.bind(null, cdrClient),
+    writeCallMargin: writeCallMargin.bind(null, cdrClient),
+    queryDailyUsageTotals: queryDailyUsageTotals.bind(null, cdrClient),
     writeAlerts: writeAlerts.bind(null, alertClient),
     queryAlerts: queryAlerts.bind(null, alertClient),
     queryAlertsSP: queryAlertsSP.bind(null, alertClient),
