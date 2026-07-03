@@ -24,7 +24,10 @@ const AlertType = {
   TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure',
   KRISP_NOT_PROVISIONED: 'no-krisp',
   APPLICATION: 'alert-from-application',
-  ERROR_UPDATING_CALL: 'error-updating-call'
+  ERROR_UPDATING_CALL: 'error-updating-call',
+  WALLET_LOW_BALANCE: 'wallet-low-balance',
+  WALLET_DEPLETED: 'wallet-depleted',
+  WALLET_RECHARGE_FAILED: 'wallet-recharge-failed'
 };
 
 const schemas = {
@@ -739,6 +742,18 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.ERROR_UPDATING_CALL:
             message = `error updating call${detail ? `: ${detail}` : ''}`;
             break;
+          case AlertType.WALLET_LOW_BALANCE:
+            // eslint-disable-next-line max-len
+            message = `your prepaid wallet balance has fallen below $${count}; add funds to avoid service interruption`;
+            break;
+          case AlertType.WALLET_DEPLETED:
+            // eslint-disable-next-line max-len
+            message = 'your prepaid wallet is out of funds; calls using jambonz carrier services are paused until you add funds';
+            break;
+          case AlertType.WALLET_RECHARGE_FAILED:
+            // eslint-disable-next-line max-len
+            message = `automatic wallet recharge failed${detail ? `: ${detail}` : ''}; please add funds or update your payment method`;
+            break;
           default:
             break;
         }
@@ -750,7 +765,12 @@ const writeAlerts = async(client, alerts) => {
       if (!message) message = alert_type || 'unknown alert';
       let fields =  { message: String(message) };
       if (target_sid) fields = Object.assign(fields, {target_sid});
-      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type, service_provider_sid, account_sid,
+      /* omit absent scope tags rather than writing the literal string
+       * "undefined" (an alert without an account, e.g. an org-level wallet
+       * alert, would otherwise carry account_sid="undefined") */
+      const obj = {measurement: 'alerts', fields: fields, tags: { alert_type,
+        ...(service_provider_sid && {service_provider_sid}),
+        ...(account_sid && {account_sid}),
         ...(vendor && {vendor})}};
       if (timestamp) obj.timestamp = timestamp;
       if (detail) obj.fields.detail = detail;
