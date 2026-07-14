@@ -185,14 +185,18 @@ const schemas = {
   llm_usage: {
     measurement: 'llm_usage',
     fields: {
+      /* call_sid is high-cardinality — a field, not a tag (matches cdrs) */
+      call_sid: Influx.FieldType.STRING,
+      /* per-call turn index; (call_sid, supplier_sid, turn) identifies a point
+       * so the rating engine debits each turn exactly once */
+      turn: Influx.FieldType.INTEGER,
       input_tokens: Influx.FieldType.INTEGER,
       output_tokens: Influx.FieldType.INTEGER
     },
     tags: [
       'service_provider_sid',
       'account_sid',
-      'supplier_sid',
-      'call_sid'
+      'supplier_sid'
     ]
   }
 };
@@ -778,7 +782,8 @@ const writeKrispUsage = async(client, usage) => {
 
 const writeLlmUsage = async(client, usage) => {
   if (!client.locals.initialized) await initDatabase(client, 'llm_usage');
-  const {service_provider_sid, account_sid, supplier_sid, call_sid, ...fields} = usage;
+  /* tags are the low-cardinality dimensions; call_sid/turn/tokens are fields */
+  const {service_provider_sid, account_sid, supplier_sid, ...fields} = usage;
   const data = {
     measurement: 'llm_usage',
     timestamp: new Date(),
@@ -786,8 +791,7 @@ const writeLlmUsage = async(client, usage) => {
     tags: {
       service_provider_sid,
       account_sid,
-      supplier_sid,
-      call_sid
+      supplier_sid
     }
   };
   client.locals.data = [...client.locals.data, ...[data]];
@@ -805,8 +809,8 @@ const writeLlmUsage = async(client, usage) => {
  */
 const queryLlmUsage = async(client, {startISO, endISO}) => {
   if (!client.locals.initialized) await initDatabase(client, 'llm_usage');
-  const sql = 'SELECT input_tokens, output_tokens, service_provider_sid, ' +
-    'account_sid, supplier_sid, call_sid FROM llm_usage ' +
+  const sql = 'SELECT input_tokens, output_tokens, turn, call_sid, ' +
+    'service_provider_sid, account_sid, supplier_sid FROM llm_usage ' +
     'WHERE time >= $start AND time < $end';
   const res = await client.queryRaw(sql, {placeholders: {start: startISO, end: endISO}});
   const out = [];
