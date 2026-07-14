@@ -181,6 +181,19 @@ const schemas = {
       'account_sid',
       'feature'
     ]
+  },
+  llm_usage: {
+    measurement: 'llm_usage',
+    fields: {
+      input_tokens: Influx.FieldType.INTEGER,
+      output_tokens: Influx.FieldType.INTEGER
+    },
+    tags: [
+      'service_provider_sid',
+      'account_sid',
+      'supplier_sid',
+      'call_sid'
+    ]
   }
 };
 
@@ -763,6 +776,53 @@ const writeKrispUsage = async(client, usage) => {
   }
 };
 
+const writeLlmUsage = async(client, usage) => {
+  if (!client.locals.initialized) await initDatabase(client, 'llm_usage');
+  const {service_provider_sid, account_sid, supplier_sid, call_sid, ...fields} = usage;
+  const data = {
+    measurement: 'llm_usage',
+    timestamp: new Date(),
+    fields,
+    tags: {
+      service_provider_sid,
+      account_sid,
+      supplier_sid,
+      call_sid
+    }
+  };
+  client.locals.data = [...client.locals.data, ...[data]];
+  if (client.locals.data.length >= client.locals.commitSize) {
+    await writeData(client);
+  }
+};
+
+/**
+ * Read llm_usage points in a time window for the rating engine's sweep.
+ * One point per (call_sid, supplier_sid).  Re-reads are safe: the caller
+ * debits with an idempotency_key derived from call_sid+supplier_sid, so a
+ * point rated twice is a ledger no-op.  Returns raw token counts; the
+ * caller applies the supplier's per-1k input/output rates.
+ */
+const queryLlmUsage = async(client, {startISO, endISO}) => {
+  if (!client.locals.initialized) await initDatabase(client, 'llm_usage');
+  const sql = 'SELECT input_tokens, output_tokens, service_provider_sid, ' +
+    'account_sid, supplier_sid, call_sid FROM llm_usage ' +
+    'WHERE time >= $start AND time < $end';
+  const res = await client.queryRaw(sql, {placeholders: {start: startISO, end: endISO}});
+  const out = [];
+  if (res.results && res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    for (const v of values) {
+      const obj = {};
+      v.forEach((val, idx) => {
+        obj['time' === columns[idx] ? 'time' : columns[idx]] = val;
+      });
+      out.push(obj);
+    }
+  }
+  return out;
+};
+
 const queryCdrsSP = async(client, opts) => {
   if (!client.locals.initialized) await initDatabase(client, 'cdrs');
   const response = {
@@ -1066,6 +1126,8 @@ module.exports = (logger, opts) => {
   const systemAlertClient = new Influx.InfluxDB({database: 'system_alerts', schemas: schemas.system_alerts, ...opts});
   // eslint-disable-next-line max-len
   const krispUsageClient = new Influx.InfluxDB({database: 'krisp_usage', schemas: schemas.krisp_usage, ...opts});
+  // eslint-disable-next-line max-len
+  const llmUsageClient = new Influx.InfluxDB({database: 'llm_usage', schemas: schemas.llm_usage, ...opts});
 
   cdrClient.locals = {
     db: 'cdrs',
@@ -1123,12 +1185,21 @@ module.exports = (logger, opts) => {
     commitInterval: opts.commitInterval || 10,
     data: []
   };
+  llmUsageClient.locals = {
+    db: 'llm_usage',
+    initialized: false,
+    writing: false,
+    commitSize: opts.commitSize || 1,
+    commitInterval: opts.commitInterval || 10,
+    data: []
+  };
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
     setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, callCountSPClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, callCountAppClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
+    setInterval(writeData.bind(null, llmUsageClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
     setInterval(writeData.bind(null, krispUsageClient), opts.commitInterval * 1000);
   }
@@ -1152,6 +1223,8 @@ module.exports = (logger, opts) => {
     queryAlertsSP: queryAlertsSP.bind(null, alertClient),
     writeSystemAlerts: writeSystemAlerts.bind(null, systemAlertClient),
     writeKrispUsage: writeKrispUsage.bind(null, krispUsageClient),
+    writeLlmUsage: writeLlmUsage.bind(null, llmUsageClient),
+    queryLlmUsage: queryLlmUsage.bind(null, llmUsageClient),
     AlertType: { ...AlertType }
   };
 };
