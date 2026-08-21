@@ -27,7 +27,11 @@ const AlertType = {
   ERROR_UPDATING_CALL: 'error-updating-call',
   WALLET_LOW_BALANCE: 'wallet-low-balance',
   WALLET_DEPLETED: 'wallet-depleted',
-  WALLET_RECHARGE_FAILED: 'wallet-recharge-failed'
+  WALLET_RECHARGE_FAILED: 'wallet-recharge-failed',
+  /* the recording server failed POSTing a call to a call-evaluation vendor (roark, coval);
+     written by upload-recordings directly via line protocol, registered here so the portal
+     renders a friendly title and Node services can reference the type consistently */
+  EVAL_POST_FAILURE: 'eval-post-failure'
 };
 
 /* the reserved name of the jambonz-managed (prepaid) carrier; cdrs on this
@@ -1014,6 +1018,10 @@ const writeAlerts = async(client, alerts) => {
           case AlertType.WALLET_RECHARGE_FAILED:
             // eslint-disable-next-line max-len
             message = `automatic wallet recharge failed${detail ? `: ${detail}` : ''}; please add funds or update your payment method`;
+            break;
+          case AlertType.EVAL_POST_FAILURE:
+            // eslint-disable-next-line max-len
+            message = `failed sending call data to ${vendor || 'the call-evaluation service'} for evaluation${detail ? `: ${detail}` : ''}`;
             break;
           default:
             break;
