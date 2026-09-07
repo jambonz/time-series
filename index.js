@@ -1125,6 +1125,39 @@ const queryAlerts = async(client, opts) => {
   return response;
 };
 
+/* poll helper: all account-scoped alerts whose point time is in the half-open
+ * nanosecond window (sinceNs, untilNs], oldest first. Used by the api-server to
+ * centrally deliver alerts to account alert hooks. sinceNs/untilNs are
+ * nanosecond-epoch integer strings the caller generates (a monotonic wall-clock
+ * high-water), injected as bare integer literals — InfluxQL reads a bare integer
+ * in a time predicate as nanoseconds, and keeping them as strings avoids JS
+ * number-precision loss at ns magnitude. Only points carrying an account_sid tag
+ * are returned (org/SP-only alerts are skipped). */
+const nsLiteral = (v) => String(v).replace(/[^0-9]/g, '');
+
+const createAlertsSinceQuery = ({sinceNs, untilNs, limit}) => {
+  let sql = `SELECT * FROM alerts WHERE account_sid != '' AND time > ${nsLiteral(sinceNs)}`;
+  if (untilNs) sql += ` AND time <= ${nsLiteral(untilNs)}`;
+  sql += ` ORDER BY time ASC LIMIT ${parseInt(limit, 10)}`;
+  return sql;
+};
+
+const queryAlertsSince = async(client, {sinceNs, untilNs, limit = 500}) => {
+  if (!client.locals.initialized) await initDatabase(client, 'alerts');
+  const sql = createAlertsSinceQuery({sinceNs, untilNs, limit});
+  const res = await client.queryRaw(sql, {});
+  const rows = [];
+  if (res.results && res.results[0] && res.results[0].series && res.results[0].series.length) {
+    const {columns, values} = res.results[0].series[0];
+    for (const v of values) {
+      const obj = {};
+      v.forEach((val, idx) => { obj[columns[idx]] = val; });
+      rows.push(obj);
+    }
+  }
+  return rows;
+};
+
 module.exports = (logger, opts) => {
   if (typeof opts === 'string') opts = {host: opts};
   assert(opts.host);
@@ -1233,6 +1266,7 @@ module.exports = (logger, opts) => {
     writeAlerts: writeAlerts.bind(null, alertClient),
     queryAlerts: queryAlerts.bind(null, alertClient),
     queryAlertsSP: queryAlertsSP.bind(null, alertClient),
+    queryAlertsSince: queryAlertsSince.bind(null, alertClient),
     writeSystemAlerts: writeSystemAlerts.bind(null, systemAlertClient),
     writeKrispUsage: writeKrispUsage.bind(null, krispUsageClient),
     writeLlmUsage: writeLlmUsage.bind(null, llmUsageClient),
