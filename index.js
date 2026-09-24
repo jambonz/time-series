@@ -31,7 +31,11 @@ const AlertType = {
   /* the recording server failed POSTing a call to a call-evaluation vendor (roark, coval);
      written by upload-recordings directly via line protocol, registered here so the portal
      renders a friendly title and Node services can reference the type consistently */
-  EVAL_POST_FAILURE: 'eval-post-failure'
+  EVAL_POST_FAILURE: 'eval-post-failure',
+  /* sbc-sip-sidecar: a carrier gateway failed (or errored on) an OPTIONS ping, or pinging was disabled */
+  SIP_GATEWAY_OPTIONS_FAILURE: 'sip-gateway-options-failure',
+  /* sbc-sip-sidecar: outbound registration failed, so registration was disabled or the carrier deactivated */
+  SIP_GATEWAY_REGISTRATION_FAILURE: 'sip-gateway-registration-failure'
 };
 
 /* the reserved name of the jambonz-managed (prepaid) carrier; cdrs on this
