@@ -154,6 +154,20 @@ test('write timeseries data', async(t) => {
       vendor: 'google'
     },
     {
+      alert_type: AlertType.NOISE_ISOLATION_NOT_PROVISIONED,
+      service_provider_sid: 'zzzzz',
+      account_sid: 'yyyy',
+      vendor: 'kugelaudio'
+    },
+    {
+      alert_type: AlertType.NOISE_ISOLATION_FAILURE,
+      service_provider_sid: 'zzzzz',
+      account_sid: 'yyyy',
+      vendor: 'kugelaudio',
+      label: 'clarity',
+      detail: '-ERR connect failed'
+    },
+    {
       alert_type: AlertType.CARRIER_NOT_PROVISIONED,
       service_provider_sid: 'zzzzz',
       account_sid: 'yyyy',
@@ -196,15 +210,20 @@ test('write timeseries data', async(t) => {
 
   result = await queryAlerts({account_sid: 'yyyy', page: 1, page_size: 25, days: 7});
   //console.log(JSON.stringify(result));
-  t.ok(result.data.length === 12, 'queried alerts');
+  t.ok(result.data.length === 14, 'queried alerts');
   t.ok(result.data[0].target_sid === null)
+  t.ok(result.data.some((a) => a.message === 'noise isolation credentials for kugelaudio have not been provisioned'),
+    'noise isolation not-provisioned message');
+  t.ok(result.data.some((a) =>
+    a.message === 'noise isolation with kugelaudio (label: clarity) failed to start: -ERR connect failed'),
+  'noise isolation failure message');
 
   // Make sure that page, page_size and days support both string and int
   result = await queryAlerts({account_sid: 'yyyy', page: '1', page_size: '10', days: '7'});
   t.ok(result.data.length === 10, 'queried alerts');
 
   result = await queryAlerts({account_sid: 'yyyy', page: '2', page_size: '10', days: '7'});
-  t.ok(result.data.length === 2, 'queried alerts');
+  t.ok(result.data.length === 4, 'queried alerts');
 
   result = await queryAlerts({account_sid: 'yyyy', target_sid: 'zzzz', page: 1, page_size: 25, days: 7});
   t.ok(result.data.length === 1, 'queried alerts by target_sid');
@@ -212,7 +231,7 @@ test('write timeseries data', async(t) => {
 
   result = await queryAlertsSP({service_provider_sid: 'zzzzz', page: 1, page_size: 25, days: 7});
   //console.log(result);
-  t.ok(result.data.length === 15, 'queried alerts by service_provider_sid');
+  t.ok(result.data.length === 17, 'queried alerts by service_provider_sid');
 
   /* regression: an alert with no resolvable message must not poison the write.
    * Previously `message: undefined` serialized to the bare token `undefined`
