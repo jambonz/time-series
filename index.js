@@ -23,6 +23,10 @@ const AlertType = {
   PLAY_FILENOTFOUND: 'play-url-notfound',
   TTS_STREAMING_CONNECTION_FAILURE: 'tts-streaming-connection-failure',
   KRISP_NOT_PROVISIONED: 'no-krisp',
+  /* noise isolation from a credentialed vendor (kugelaudio): no usable credential, or the
+     vendor failed to start; krisp keeps KRISP_NOT_PROVISIONED */
+  NOISE_ISOLATION_NOT_PROVISIONED: 'no-noise-isolation',
+  NOISE_ISOLATION_FAILURE: 'noise-isolation-failure',
   APPLICATION: 'alert-from-application',
   ERROR_UPDATING_CALL: 'error-updating-call',
   WALLET_LOW_BALANCE: 'wallet-low-balance',
@@ -973,6 +977,16 @@ const writeAlerts = async(client, alerts) => {
             // LLM failures are not credential issues (model not in region,
             // rate limit, transient vendor 500, etc.).
             message = `large language model request to ${v} failed${detail ? `: ${detail}` : ''}`;
+            break;
+          }
+          case AlertType.NOISE_ISOLATION_NOT_PROVISIONED: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `noise isolation credentials for ${v} have not been provisioned`;
+            break;
+          }
+          case AlertType.NOISE_ISOLATION_FAILURE: {
+            const v = label ? `${vendor} (label: ${label})` : vendor;
+            message = `noise isolation with ${v} failed to start${detail ? `: ${detail}` : ''}`;
             break;
           }
           case AlertType.CARRIER_NOT_PROVISIONED:
