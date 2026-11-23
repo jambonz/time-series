@@ -468,6 +468,17 @@ const initDatabase = async(client, dbName) => {
   client.locals.initialized = true;
 };
 
+/* queryRaw resolves even when a statement failed: influxdb 1.x answers 200 with
+ * an error on that statement's result (query-timeout, max-select-point,
+ * max-select-series, a killed query).  Throw, so a failed query is not read as
+ * an empty result. */
+const queryRaw = async(client, sql, opts) => {
+  const res = await client.queryRaw(sql, opts);
+  const failed = (res.results || []).find((r) => r.error);
+  if (failed) throw new Error(`influxdb query failed: ${failed.error}`);
+  return res;
+};
+
 const writeCallCount = async(client, count) => {
   if (!client.locals.initialized) await initDatabase(client, 'call_counts');
   const {service_provider_sid, account_sid, ...fields} = count;
@@ -532,13 +543,13 @@ const queryCallCountsApp = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createCallCountsCountQueryApp(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCallCountsQueryApp(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -567,13 +578,13 @@ const queryCallCountsSP = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createCallCountsCountQuerySP(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCallCountsQuerySP(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -602,13 +613,13 @@ const queryCallCounts = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createCallCountsCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`sqlTotal: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCallCountsQuery(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(res)}`);
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -705,7 +716,7 @@ const queryRatingCandidates = async(client, {trunk, start, end, limit = 5000, of
   const endMs = Math.trunc(new Date(end).getTime());
   const sql = `SELECT * FROM cdrs_by_end WHERE trunk = $trunk
     AND time > ${startMs}ms AND time <= ${endMs}ms ORDER BY time ASC LIMIT $limit OFFSET $offset`;
-  const res = await client.queryRaw(sql, {
+  const res = await queryRaw(client, sql, {
     placeholders: {trunk, limit, offset},
     precision: 'ms',
   });
@@ -777,7 +788,7 @@ const queryDailyUsageTotals = async(client, {trunk, start, end}) => {
   const sql = `SELECT SUM(cost) AS total_cost, SUM(billed_seconds) AS total_billed_seconds,
     COUNT(cost) AS calls FROM cdrs_by_end WHERE trunk = $trunk
     AND time > ${startMs}ms AND time <= ${endMs}ms GROUP BY account_sid`;
-  const res = await client.queryRaw(sql, {
+  const res = await queryRaw(client, sql, {
     placeholders: {trunk},
     precision: 'ms',
   });
@@ -862,7 +873,7 @@ const queryLlmUsage = async(client, {startISO, endISO}) => {
   const sql = 'SELECT input_tokens, output_tokens, turn, call_sid, ' +
     'service_provider_sid, account_sid, supplier_sid FROM llm_usage ' +
     'WHERE time >= $start AND time < $end';
-  const res = await client.queryRaw(sql, {placeholders: {start: startISO, end: endISO}});
+  const res = await queryRaw(client, sql, {placeholders: {start: startISO, end: endISO}});
   const out = [];
   if (res.results && res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -887,13 +898,13 @@ const queryCdrsSP = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createCdrCountQuerySP(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCdrQuerySP(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {
@@ -922,13 +933,13 @@ const queryCdrs = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createCdrCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`sql: ${sqlTotal}, results: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createCdrQuery(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   //console.log(JSON.stringify(res.results[0]));
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
@@ -1127,13 +1138,13 @@ const queryAlertsSP = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createAlertsCountQuerySP(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`query total alerts: ${sqlTotal}: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createAlertsQuerySP(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {
@@ -1159,13 +1170,13 @@ const queryAlerts = async(client, opts) => {
   };
   const params = generateBindParameters(opts);
   const sqlTotal = createAlertsCountQuery(opts);
-  const obj = await client.queryRaw(sqlTotal, { placeholders: params});
+  const obj = await queryRaw(client, sqlTotal, { placeholders: params});
   //console.log(`query total alerts: ${sqlTotal}: ${JSON.stringify(obj)}`);
   if (!obj.results || !obj.results[0].series) return response;
   response.total = obj.results[0].series[0].values[0][1];
 
   const sql = createAlertsQuery(opts);
-  const res = await client.queryRaw(sql, { placeholders: params});
+  const res = await queryRaw(client, sql, { placeholders: params});
   if (res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];
     const data = values.map((v) => {
@@ -1201,7 +1212,7 @@ const createAlertsSinceQuery = ({sinceNs, untilNs, limit}) => {
 const queryAlertsSince = async(client, {sinceNs, untilNs, limit = 500}) => {
   if (!client.locals.initialized) await initDatabase(client, 'alerts');
   const sql = createAlertsSinceQuery({sinceNs, untilNs, limit});
-  const res = await client.queryRaw(sql, {});
+  const res = await queryRaw(client, sql, {});
   const rows = [];
   if (res.results && res.results[0] && res.results[0].series && res.results[0].series.length) {
     const {columns, values} = res.results[0].series[0];

@@ -3,6 +3,9 @@
   "version": "0.5.5",
   "description": "write and query data to time series daetabase",
   "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node test/",
     "coverage": "./node_modules/.bin/nyc --reporter html --report-dir ./coverage npm run test",
