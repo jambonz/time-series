@@ -213,7 +213,7 @@ const schemas = {
   }
 };
 
-/* How many points per measurement are kept for the next flush after failed
+/* How many points per database are kept for the next flush after failed
  * writes (opts.maxRetryPoints); beyond that the oldest are dropped. */
 const MAX_RETRY_POINTS = 10000;
 
@@ -225,6 +225,14 @@ const RETRYABLE_CODES = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIME
 const isRetryable = (err) => !!err &&
   ((err.constructor && 'ServiceNotAvailableError' === err.constructor.name) || RETRYABLE_CODES.includes(err.code));
 
+/* Points that a failed write never keeps for the next flush: those of
+ * writeRatedCdrs.  The rating sweep charges a call once writeRatedCdrs resolves,
+ * and a call whose cost is stored counts as rated (see queryRatingCandidates).
+ * A cost stored by a later flush, after the call was rejected, could leave the
+ * call rated but not charged; dropped, the call can be rated again by the next
+ * sweep. */
+const noRetry = new WeakSet();
+
 /* After a failed write, keep the points that can be written again on the next
  * flush: only when influxdb could not take them (a 4xx would fail again), and
  * only points with their own timestamp, which a repeat overwrites; a point
@@ -233,40 +241,68 @@ const isRetryable = (err) => !!err &&
  * into a write attempt. */
 const keepForRetry = (client, batch, err) => {
   const {locals} = client;
-  const keep = isRetryable(err) ? batch.filter((point) => undefined !== point.timestamp) : [];
+  const keep = isRetryable(err) ?
+    batch.filter((point) => undefined !== point.timestamp && !noRetry.has(point)) : [];
   locals.retry = keep.slice(-locals.maxRetryPoints);
   locals.logger.error({err}, `time-series: failed to write ${batch.length} point(s) to ${locals.db}; ` +
     `kept ${locals.retry.length} for the next flush, dropped ${batch.length - locals.retry.length}`);
 };
 
-const writeData = async(client) => {
+/* Write a batch taken out of the buffer.  If that fails, keep what can be
+ * written again on the next flush, and reject. */
+const writeBatch = async(client, batch) => {
   const {locals} = client;
-  if (0 === locals.data.length && 0 === locals.retry.length) return;
-  if (locals.writing) {
-    /* the write in flight writes these too when it completes */
-    locals.flushAgain = true;
-    return;
-  }
-  locals.writing = true;
   try {
     if (!locals.initialized) await initDatabase(client, locals.db);
-    do {
-      locals.flushAgain = false;
-      /* take the points out of the buffer before writing them, so that points
-       * queued while the write is in flight are not cleared along with them */
-      const batch = [...locals.retry, ...locals.data];
-      locals.retry = [];
-      locals.data = [];
-      try {
-        await client.writePoints(batch);
-      } catch (err) {
-        keepForRetry(client, batch, err);
-        throw err;
-      }
-    } while (locals.flushAgain && locals.data.length > 0);
-  } finally {
-    locals.writing = false;
+    await client.writePoints(batch);
+  } catch (err) {
+    keepForRetry(client, batch, err);
+    throw err;
   }
+};
+
+/* The write in flight failed because influxdb is unavailable, so the write queued
+ * behind it is not tried: the influx client would refuse it ("No host available"
+ * while it backs off from its host) or it would fail the same way.  The buffered
+ * points stay for the next flush, as after any failed write, except those of
+ * writeRatedCdrs (see noRetry), and the queued callers get that error. */
+const deferQueued = (client, err) => {
+  const {locals} = client;
+  const buffered = locals.data.length;
+  locals.data = locals.data.filter((point) => !noRetry.has(point));
+  const dropped = buffered - locals.data.length;
+  if (dropped) {
+    locals.logger.error({err}, `time-series: dropped ${dropped} point(s) of writeRatedCdrs queued for ${locals.db} ` +
+      'behind a failed write');
+  }
+  throw err;
+};
+
+/* Write the buffered points, one write at a time per database.  A write asked
+ * for while another is in flight waits for that one, then takes every point
+ * buffered by then.  A caller waits for the write that holds its points: it
+ * resolves once that write succeeds, and is rejected if it fails or is not
+ * tried (see deferQueued). */
+const writeData = (client) => {
+  const {locals} = client;
+  if (locals.queued) return locals.queued;
+  if (0 === locals.data.length && 0 === locals.retry.length) return Promise.resolve();
+  if (locals.writing) {
+    locals.queued = locals.writing.then(() => null, (err) => err).then((err) => {
+      locals.queued = null;
+      return isRetryable(err) ? deferQueued(client, err) : writeData(client);
+    });
+    return locals.queued;
+  }
+  /* take the points out of the buffer before writing them, so that points
+   * queued while the write is in flight are not cleared along with them */
+  const batch = [...locals.retry, ...locals.data];
+  locals.retry = [];
+  locals.data = [];
+  locals.writing = writeBatch(client, batch).finally(() => {
+    locals.writing = null;
+  });
+  return locals.writing;
 };
 
 /* for application */
@@ -744,6 +780,8 @@ const writeRatedCdrs = async(client, rows) => {
     points.push({measurement: 'cdrs_by_end',
       timestamp: nsTimestamp(row.end_time, row.call_sid), fields, tags});
   }
+  /* if their write fails, the next sweep rates these calls again (see noRetry) */
+  points.forEach((point) => noRetry.add(point));
   client.locals.data = [...client.locals.data, ...points];
   await writeData(client);
 };
@@ -1244,7 +1282,7 @@ module.exports = (logger, opts) => {
   cdrClient.locals = {
     db: 'cdrs',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1252,7 +1290,7 @@ module.exports = (logger, opts) => {
   alertClient.locals = {
     db: 'alerts',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1260,7 +1298,7 @@ module.exports = (logger, opts) => {
   callCountAppClient.locals = {
     db: 'app_call_counts',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1268,7 +1306,7 @@ module.exports = (logger, opts) => {
   callCountSPClient.locals = {
     db: 'sp_call_counts',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1276,7 +1314,7 @@ module.exports = (logger, opts) => {
   callCountClient.locals = {
     db: 'call_counts',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1284,7 +1322,7 @@ module.exports = (logger, opts) => {
   systemAlertClient.locals = {
     db: 'system_alerts',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1292,7 +1330,7 @@ module.exports = (logger, opts) => {
   krispUsageClient.locals = {
     db: 'krisp_usage',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1300,7 +1338,7 @@ module.exports = (logger, opts) => {
   llmUsageClient.locals = {
     db: 'llm_usage',
     initialized: false,
-    writing: false,
+    writing: null,
     commitSize: opts.commitSize || 1,
     commitInterval: opts.commitInterval || 10,
     data: []
@@ -1309,7 +1347,8 @@ module.exports = (logger, opts) => {
   const log = logger && 'function' === typeof logger.error ? logger : console;
   [cdrClient, alertClient, callCountClient, callCountSPClient, callCountAppClient,
     systemAlertClient, krispUsageClient, llmUsageClient].forEach((client) => {
-    Object.assign(client.locals, {retry: [], logger: log, maxRetryPoints: opts.maxRetryPoints || MAX_RETRY_POINTS});
+    Object.assign(client.locals, {retry: [], queued: null, logger: log,
+      maxRetryPoints: opts.maxRetryPoints || MAX_RETRY_POINTS});
   });
 
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
