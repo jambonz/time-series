@@ -213,21 +213,59 @@ const schemas = {
   }
 };
 
+/* How many points per measurement are kept for the next flush after failed
+ * writes (opts.maxRetryPoints); beyond that the oldest are dropped. */
+const MAX_RETRY_POINTS = 10000;
+
+/* How the influx client reports that influxdb could not take the points right
+ * now: a ServiceNotAvailableError for a 5xx, a timeout or no available host (the
+ * class is not exported, hence the name check), or the code of a network error. */
+const RETRYABLE_CODES = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EHOSTUNREACH',
+  'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE'];
+const isRetryable = (err) => !!err &&
+  ((err.constructor && 'ServiceNotAvailableError' === err.constructor.name) || RETRYABLE_CODES.includes(err.code));
+
+/* After a failed write, keep the points that can be written again on the next
+ * flush: only when influxdb could not take them (a 4xx would fail again), and
+ * only points with their own timestamp, which a repeat overwrites; a point
+ * without one would be stored at the time of the late write.  Kept points do
+ * not count towards commitSize, so an outage does not turn every write call
+ * into a write attempt. */
+const keepForRetry = (client, batch, err) => {
+  const {locals} = client;
+  const keep = isRetryable(err) ? batch.filter((point) => undefined !== point.timestamp) : [];
+  locals.retry = keep.slice(-locals.maxRetryPoints);
+  locals.logger.error({err}, `time-series: failed to write ${batch.length} point(s) to ${locals.db}; ` +
+    `kept ${locals.retry.length} for the next flush, dropped ${batch.length - locals.retry.length}`);
+};
+
 const writeData = async(client) => {
-  const {data, initialized} = client.locals;
-  if (0 === data.length || client.locals.writing) return;
-  if (!initialized) await initDatabase(client, client.locals.db);
+  const {locals} = client;
+  if (0 === locals.data.length && 0 === locals.retry.length) return;
+  if (locals.writing) {
+    /* the write in flight writes these too when it completes */
+    locals.flushAgain = true;
+    return;
+  }
+  locals.writing = true;
   try {
-    //console.log(`writing data ${JSON.stringify(data)}`);
-    client.locals.writing = true;
-    await client.writePoints(data);
-    client.locals.writing = false;
-    client.locals.data = [];
-  } catch (err) {
-    console.log(err);
-    client.locals.writing = false;
-    client.locals.data = [];
-    throw err;
+    if (!locals.initialized) await initDatabase(client, locals.db);
+    do {
+      locals.flushAgain = false;
+      /* take the points out of the buffer before writing them, so that points
+       * queued while the write is in flight are not cleared along with them */
+      const batch = [...locals.retry, ...locals.data];
+      locals.retry = [];
+      locals.data = [];
+      try {
+        await client.writePoints(batch);
+      } catch (err) {
+        keepForRetry(client, batch, err);
+        throw err;
+      }
+    } while (locals.flushAgain && locals.data.length > 0);
+  } finally {
+    locals.writing = false;
   }
 };
 
@@ -1257,14 +1295,23 @@ module.exports = (logger, opts) => {
     data: []
   };
 
+  const log = logger && 'function' === typeof logger.error ? logger : console;
+  [cdrClient, alertClient, callCountClient, callCountSPClient, callCountAppClient,
+    systemAlertClient, krispUsageClient, llmUsageClient].forEach((client) => {
+    Object.assign(client.locals, {retry: [], logger: log, maxRetryPoints: opts.maxRetryPoints || MAX_RETRY_POINTS});
+  });
+
   if (opts.commitSize > 1 && opts.commitInterval && opts.commitInterval > 2) {
-    setInterval(writeData.bind(null, callCountClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, callCountSPClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, callCountAppClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, cdrClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, llmUsageClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, alertClient), opts.commitInterval * 1000);
-    setInterval(writeData.bind(null, krispUsageClient), opts.commitInterval * 1000);
+    /* nobody awaits a periodic flush, and writeData has logged a failure: do not
+     * leave the rejection unhandled, which ends a process that has no handler */
+    const flush = (client) => writeData(client).catch(() => {});
+    setInterval(flush.bind(null, callCountClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, callCountSPClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, callCountAppClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, cdrClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, llmUsageClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, alertClient), opts.commitInterval * 1000);
+    setInterval(flush.bind(null, krispUsageClient), opts.commitInterval * 1000);
   }
 
   return {
