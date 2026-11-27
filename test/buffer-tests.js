@@ -25,12 +25,24 @@ const cdr = (i) => ({
   account_sid: 'xxxx',
   call_sid: `call-${i}`
 });
+/* what the rating sweep hands to writeRatedCdrs for a call */
+const rated = (i) => ({
+  call_sid: `call-${i}`,
+  attempted_at: Date.now() - (3600 * 1000) - i,
+  end_time: Date.now(),
+  cost: i,
+  rate: 0.01,
+  billed_seconds: 60,
+  tags: {direction: 'inbound', host: '10.10.100.1', trunk: 'device', service_provider_sid: 'zzzzz',
+    account_sid: 'xxxx', answered: true}
+});
 const refused = () => Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8086'), {code: 'ECONNREFUSED'});
 
 /**
  * Create a time-series instance whose influx client is stubbed:
- * - stub.written: the points of the writes that succeeded, in order
- *   (a cdr by its call_sid, a call count as calls-<calls_in_progress>)
+ * - stub.written: the points of the writes that succeeded, in order (a cdr by
+ *   its call_sid, a rated cdr as rated-<cost> once for each of its two points,
+ *   a call count as calls-<calls_in_progress>)
  * - stub.writes: the number of points in each write attempted
  * - stub.failures: errors to fail the next writes with
  * - stub.errors: the arguments of each logger.error call
@@ -46,7 +58,8 @@ const setup = (t, opts) => {
   Influx.InfluxDB.prototype.getDatabaseNames = async() => ['cdrs', 'call_counts'];
   Influx.InfluxDB.prototype.writePoints = async function(points) {
     /* like the real client, take the points as they are when the write starts */
-    const labels = points.map((p) => p.fields.call_sid || `calls-${p.fields.calls_in_progress}`);
+    const labels = points.map((p) => p.fields.call_sid ||
+      (undefined !== p.fields.cost ? `rated-${p.fields.cost}` : `calls-${p.fields.calls_in_progress}`));
     stub.writes.push(labels.length);
     const err = stub.failures.shift();
     await sleep(stub.delay);
@@ -175,4 +188,97 @@ test('a failed periodic flush does not leave an unhandled rejection', async(t) =
 
   await tick();
   t.deepEqual(stub.written, sids(1, 5), 'the cdrs were written by the next periodic flush');
+});
+
+test('a call made while a write is in flight resolves only once its own cdrs are written', async(t) => {
+  const {writeCdrs, stub} = setup(t, {});
+  await writeCdrs(cdr(0)); /* creates the database, so the calls below queue their cdrs at once */
+
+  const first = writeCdrs(cdr(1));
+  const writtenWhenResolved = {};
+  await Promise.all([2, 3].map(async(i) => {
+    await writeCdrs(cdr(i));
+    writtenWhenResolved[i] = stub.written.includes(`call-${i}`);
+  }));
+  t.deepEqual(writtenWhenResolved, {2: true, 3: true},
+    'each call made during the write of cdr 1 resolved only once its own cdr was written');
+  t.deepEqual(stub.writes, [1, 1, 2], 'their cdrs went out together, right after that write');
+  await first;
+});
+
+test('writeRatedCdrs resolves only once its points are written, also during a periodic flush', async(t) => {
+  const {writeCdrs, writeRatedCdrs, stub, tick} = setup(t, {commitSize: 50, commitInterval: 20});
+  await Promise.all(range(1, 5).map((i) => writeCdrs(cdr(i))));
+
+  const flushing = tick(); /* starts writing the five buffered cdrs */
+  await writeRatedCdrs([rated(1)]);
+  t.deepEqual(stub.written, [...sids(1, 5), 'rated-1', 'rated-1'], 'it resolved after its points were written');
+  await flushing;
+});
+
+test('each call hears how the write that holds its points ended', async(t) => {
+  const {writeCdrs, stub} = setup(t, {});
+  await writeCdrs(cdr(0));
+  const badRequest = () =>
+    new RequestError({}, {statusCode: 400, statusMessage: 'Bad Request'}, '{"error":"partial write"}');
+
+  /* the write in flight succeeds, and influxdb rejects the next one */
+  stub.failures.push(undefined, badRequest());
+  let results = await Promise.allSettled([writeCdrs(cdr(1)), writeCdrs(cdr(2))]);
+  t.deepEqual(results.map((r) => r.status), ['fulfilled', 'rejected'], 'only the call whose write failed is rejected');
+
+  /* influxdb rejects the write in flight, and the next one succeeds */
+  stub.failures.push(badRequest());
+  results = await Promise.allSettled([writeCdrs(cdr(3)), writeCdrs(cdr(4))]);
+  t.deepEqual(results.map((r) => r.status), ['rejected', 'fulfilled'], 'only the call whose write failed is rejected');
+  t.deepEqual(stub.written, ['call-0', 'call-1', 'call-4'], 'the queued cdr was written right after');
+
+  /* the write in flight fails because influxdb is unreachable: the next one is not tried */
+  stub.failures.push(refused());
+  const attempts = stub.writes.length;
+  results = await Promise.allSettled([writeCdrs(cdr(5)), writeCdrs(cdr(6))]);
+  t.deepEqual(results.map((r) => r.status), ['rejected', 'rejected'], 'both calls are rejected');
+  t.equal(results[1].reason, results[0].reason, 'the queued call got the error of the write in flight');
+  t.equal(stub.writes.length, attempts + 1, 'only the write in flight was tried');
+  await writeCdrs(cdr(7));
+  t.deepEqual(stub.written.slice(3), ['call-5', 'call-6', 'call-7'], 'both cdrs went out with the next write');
+});
+
+test('points queued behind a write that fails go out with the next flush, except those of writeRatedCdrs',
+  async(t) => {
+    const {writeCallCount, writeCdrs, writeRatedCdrs, stub} = setup(t, {});
+    /* one account per count: influxdb stamps points that have no timestamp with the time of their write, so
+     * counts of one account in one write would overwrite each other */
+    const count = (n) => ({calls_in_progress: n, service_provider_sid: 'zzzzz', account_sid: `acct-${n}`});
+    await writeCallCount(count(1));
+
+    stub.failures.push(refused());
+    const results = await Promise.allSettled([writeCallCount(count(2)), writeCallCount(count(3))]);
+    t.deepEqual(results.map((r) => r.status), ['rejected', 'rejected'], 'both calls are rejected');
+    await writeCallCount(count(4));
+    t.deepEqual(stub.written, ['calls-1', 'calls-3', 'calls-4'],
+      'the queued count went out with the next write; the count of the failed write, which has no timestamp, did not');
+
+    await writeCdrs(cdr(1));
+    stub.failures.push(refused());
+    await Promise.allSettled([writeCdrs(cdr(2)), writeRatedCdrs([rated(2)])]);
+    await writeCdrs(cdr(3));
+    t.deepEqual(stub.written.slice(3), ['call-1', 'call-2', 'call-3'],
+      'the cdrs went out, but not the points of the queued writeRatedCdrs: the next sweep rates the call again');
+    t.ok(stub.errors.some((args) => /dropped 2 point\(s\) of writeRatedCdrs queued for cdrs/.test(args[1])),
+      'dropping them was logged');
+  });
+
+test('the points of writeRatedCdrs are not kept for the next flush', async(t) => {
+  const {writeCdrs, writeRatedCdrs, stub, tick} = setup(t, {commitSize: 50, commitInterval: 20});
+  await Promise.all(range(1, 5).map((i) => writeCdrs(cdr(i))));
+
+  stub.failures.push(refused());
+  const [result] = await Promise.allSettled([writeRatedCdrs([rated(1)])]);
+  t.equal(result.status, 'rejected', 'writeRatedCdrs is rejected when its write fails');
+
+  await tick();
+  t.deepEqual(stub.written, sids(1, 5),
+    'the next flush wrote the cdrs that were in that write, not the rated points: the next sweep rates the call again');
+  t.ok(/kept 5 for the next flush, dropped 2/.test(stub.errors[0][1]), 'dropping them was logged');
 });
